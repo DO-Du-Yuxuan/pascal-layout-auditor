@@ -26,20 +26,11 @@ describe("Pascal world geometry", () => {
   it("locks the five accepted furniture matrices for the reference project", () => {
     const nodes: any = referenceProject.nodes;
     const expected: any = {
-      item_en7gkkh860ie66fr: [8.85, -8.25, 38.48451000647496, 0.824, 0.872],
-      item_qwl32apwujit45ta: [
-        8.809796558763024, -6.5429258323696295, 21.205750411731103, 0.824,
-        0.872,
-      ],
-      item_2sfibsdl9adxpoym: [10.7, -7.425, 4.71238898038469, 2.06, 1.01],
-      item_6oulmu9wen90y68v: [6.5, -2.5, 0, 0.605, 0.605],
-      item_5qx015iyn9pq2zcg: [
-        9.51150579452515,
-        -4.8513798885868455,
-        Math.PI,
-        1.835,
-        0.6,
-      ],
+      item_010u26nmiwafik24: [-7.45, 2.65, 18.84955592153876, .67, .66],
+      item_0aahggnuvs15c6lx: [9.92270180702209, -6.859999999999998, 34.55751918948772, 1.52, 2],
+      item_1hdkr5ppq6qmxf3i: [11.349227397441863, -4.73440688171607, 174.35839227423352, 1.83, .63],
+      item_1ug0qer2vtffbel6: [4.045, -4.981398662959234, Math.PI, .31, .6],
+      item_348v7t77kgcx9ac5: [-11.700000000000001, -6, Math.PI * 1.5, 1.5, .624],
     };
     for (const [id, [x, z, r, width, depth]] of Object.entries(
       expected,

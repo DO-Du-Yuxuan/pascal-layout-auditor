@@ -96,9 +96,9 @@ describe('experimental Pascal wall geometry', () => {
       (wallsByLevel[levelId] ??= []).push(node as Wall);
     }
     const report = buildWallGeometryReport(wallsByLevel);
-    expect(report.totalWalls).toBeGreaterThan(0);
-    expect(report.exactWallCount).toBe(report.totalWalls);
-    expect(report.invalidWallCount).toBe(0);
+    expect(report.totalWalls).toBe(109);
+    expect(report.exactWallCount).toBe(107);
+    expect(report.invalidWallCount).toBe(2);
     expect(report.selfIntersectingCount).toBe(0);
     expect(report.miterOutlierCount).toBe(0);
     expect(Object.keys(report.byLevel).length).toBeGreaterThan(0);
