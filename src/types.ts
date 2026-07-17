@@ -8,7 +8,7 @@ export type NodeData = Record<string, any> & {
   scale?: number[];
 };
 export type Diagnostic = {
-  severity: "error" | "warning" | "info";
+  severity: "error" | "warning" | "info" | string;
   code: string;
   message: string;
   nodeId?: string;

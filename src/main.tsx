@@ -20,6 +20,7 @@ import { inspectNodes } from "./diagnostics/check";
 import { buildExperimentalWalls, Wall as PascalWall } from "./geometry/walls";
 import { hasValidShelfFootprint, resolveShelfData, resolveShelfPlanTransform, shelfCorners, shelfDividerXs, shelfMatrix } from "./geometry/shelf";
 import { buildSpiralStairDestinationEntry, buildSpiralStairPlanGeometry, spiralStairCorners } from "./geometry/spiral-stair";
+import { auditSceneCoverage } from "./coverage/auditSceneCoverage";
 
 type Visibility = {
   images: boolean;
@@ -125,8 +126,8 @@ function App() {
         ? current.filter((canvas) => canvas.id !== id)
         : current,
     );
-  const diagnostics = useMemo(
-    () => (data ? [...data.diagnostics, ...transformDiagnostics(nodes)] : []),
+  const coverage = useMemo(() => auditSceneCoverage(nodes), [nodes]), diagnostics = useMemo(
+    () => (data ? [...data.diagnostics, ...transformDiagnostics(nodes), ...coverage.diagnostics] : []),
     [data, nodes],
   );
   return (
@@ -199,6 +200,7 @@ function App() {
             viewBox={canvases[0]?.viewBox || emptyView}
           />
           <Diagnostics diagnostics={diagnostics} />
+          <CoverageReport coverage={coverage} />
         </aside>
         <section className="canvas-workspace">
           <div className="canvas-workspace-head">
@@ -918,4 +920,5 @@ function Diagnostics({ diagnostics }: { diagnostics: Diagnostic[] }) {
     </section>
   );
 }
+function CoverageReport({coverage}:{coverage:ReturnType<typeof auditSceneCoverage>}){return <section className="side-section diagnostics-panel"><div className="side-heading"><h2>解析覆盖</h2><span className="pill">{Object.keys(coverage.byKind).length}</span></div><small>Core {coverage.summary.builtInNodes} · 未知 {coverage.summary.unknownPluginNodes} · 未渲染 {coverage.summary.parsedNotRenderedNodes}</small>{Object.entries(coverage.byKind).map(([kind,entries])=><details key={kind}><summary>{kind} · {entries.length} · {entries[0].overallStatus}</summary><pre>{JSON.stringify(entries.map(e=>({id:e.nodeId,variant:e.variant,status:e.overallStatus,reason:e.reason,ancestorLevelId:e.ancestorLevelId})),null,2)}</pre></details>)}</section>}
 createRoot(document.getElementById("root")!).render(<App />);
