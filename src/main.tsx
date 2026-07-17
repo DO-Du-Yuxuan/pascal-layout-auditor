@@ -47,7 +47,7 @@ const visibilityDefault: Visibility = {
   images: true,
   boxes: true,
   centers: false,
-  axes: true,
+  axes: false,
   names: false,
   zones: true,
   slabs: true,
@@ -461,7 +461,7 @@ function Plan({
       }}
       onPointerUp={() => (drag.current = null)}
     >
-      <svg viewBox={vb}>
+      <svg viewBox={vb} onClick={(event) => { if (!(event.target as Element).closest("[data-selectable]")) onSelect(null); }}>
         <defs>
           <marker
             id={`arrow-${levelId}`}
@@ -482,7 +482,6 @@ function Plan({
           width={viewBox.width}
           height={viewBox.height}
           fill="#f7f8f5"
-          onClick={() => onSelect(null)}
         />
         <g transform={`rotate(${rotation} ${cx} ${cz})`}>
           {visibility.slabs && rendered.filter((n) => n.type === "slab" && n.visible !== false).map((n) => <Slab key={n.id} node={n} selected={selectedId === n.id} onSelect={onSelect} />)}
@@ -583,7 +582,7 @@ function Polygon({ node }: { node: NodeData }) {
 function Slab({ node, selected, onSelect }: { node: NodeData; selected: boolean; onSelect: (id: string) => void }) {
   const geometry = buildSlabPlanGeometry(node);
   if (!geometry) return null;
-  return <path d={geometry.path} fill={selected ? "#dbe8dc" : "#e8eee8"} fillRule="evenodd" clipRule="evenodd" stroke={selected ? "#e75c3c" : "#b5c2b8"} strokeWidth={selected ? ".04" : ".018"} opacity=".78" onClick={() => onSelect(node.id)} />;
+  return <path data-selectable d={geometry.path} fill={selected ? "#dbe8dc" : "#e8eee8"} fillRule="evenodd" clipRule="evenodd" stroke={selected ? "#e75c3c" : "#b5c2b8"} strokeWidth={selected ? ".04" : ".018"} opacity=".78" onClick={() => onSelect(node.id)} />;
 }
 function Wall({
   node,
@@ -604,6 +603,7 @@ function Wall({
   if (footprint?.length && valid)
     return (
       <polygon
+        data-selectable
         points={footprint.map((point) => `${point.x},${point.y}`).join(" ")}
         fill={selected ? "#e75c3c" : "#303a3b"}
         stroke="#202929"
@@ -615,6 +615,7 @@ function Wall({
   if (footprint && !valid)
     return (
       <g
+        data-selectable
         aria-label={`experimental wall diagnostic: ${diagnosticCodes?.join(", ") || "unknown"}`}
         onClick={() => onSelect(node.id)}
       >
@@ -635,7 +636,7 @@ function Wall({
 function Shelf({ node, nodes, selected, onSelect }: { node: NodeData; nodes: Record<string, NodeData>; selected: boolean; onSelect: (id: string) => void }) {
   const data = resolveShelfData(node), matrix = shelfMatrix(node, nodes);
   if (!matrix || !hasValidShelfFootprint(node)) return null;
-  return <g transform={svgMatrixString(matrix)} onClick={() => onSelect(node.id)} className="shelf">
+  return <g data-selectable transform={svgMatrixString(matrix)} onClick={() => onSelect(node.id)} className="shelf">
     <rect x={-data.width / 2} y={-data.depth / 2} width={data.width} height={data.depth} fill="#d6d3d1" stroke={selected ? "#e75c3c" : "#1f2937"} strokeWidth={selected ? ".045" : ".015"} opacity=".9" />
     {shelfDividerXs(data).map((x) => <line key={x} x1={x} x2={x} y1={-data.depth / 2 + data.thickness} y2={data.depth / 2 - data.thickness} stroke="#1f2937" strokeWidth=".012" opacity=".7" />)}
   </g>;
@@ -659,6 +660,7 @@ function Opening({
   if (node.type === "door")
     return (
       <g
+        data-selectable
         transform={`translate(${transform.x} ${transform.z}) rotate(${angle})`}
         onClick={() => onSelect(node.id)}
       >
@@ -675,6 +677,7 @@ function Opening({
     );
   return (
     <g
+      data-selectable
       transform={`translate(${transform.x} ${transform.z}) rotate(${angle})`}
       onClick={() => onSelect(node.id)}
     >
@@ -702,18 +705,18 @@ function Stair({
 }) {
   if (node.stairType === 'spiral') {
     const geometry = buildSpiralStairPlanGeometry(node); if (!geometry) return null;
-    return <g onClick={() => onSelect(node.id)}><path d={geometry.footprintPath} fill="rgba(255,255,255,.08)" stroke="#171717" strokeWidth=".025" />{geometry.treadLines.map((line,index)=><line key={index} x1={line.start.x} y1={line.start.z} x2={line.end.x} y2={line.end.z} stroke="#262626" strokeWidth={index===geometry.treadLines.length-1?'.035':'.018'} />)}{geometry.railingPaths.map((path,index)=><polyline key={index} points={path.map(p=>`${p.x},${p.z}`).join(' ')} fill="none" stroke="#171717" strokeWidth=".025" />)}{geometry.centerColumn&&<circle cx={geometry.centerColumn.x} cy={geometry.centerColumn.z} r={Math.max(geometry.innerRadius*.18,.06)} fill="#d6d3d1" stroke="#171717" strokeWidth=".02"/>}<line x1={geometry.upDirection.from.x} y1={geometry.upDirection.from.z} x2={geometry.upDirection.to.x} y2={geometry.upDirection.to.z} stroke="#171717" strokeWidth=".03" markerEnd="url(#stair-up)"/></g>;
+    return <g data-selectable onClick={() => onSelect(node.id)}><path d={geometry.footprintPath} fill="rgba(255,255,255,.08)" stroke="#171717" strokeWidth=".025" />{geometry.treadLines.map((line,index)=><line key={index} x1={line.start.x} y1={line.start.z} x2={line.end.x} y2={line.end.z} stroke="#262626" strokeWidth={index===geometry.treadLines.length-1?'.035':'.018'} />)}{geometry.railingPaths.map((path,index)=><polyline key={index} points={path.map(p=>`${p.x},${p.z}`).join(' ')} fill="none" stroke="#171717" strokeWidth=".025" />)}{geometry.centerColumn&&<circle cx={geometry.centerColumn.x} cy={geometry.centerColumn.z} r={Math.max(geometry.innerRadius*.18,.06)} fill="#d6d3d1" stroke="#171717" strokeWidth=".02"/>}<line x1={geometry.upDirection.from.x} y1={geometry.upDirection.from.z} x2={geometry.upDirection.to.x} y2={geometry.upDirection.to.z} stroke="#171717" strokeWidth=".03" markerEnd="url(#stair-up)"/></g>;
   }
   if (node.stairType === 'curved') {
     const geometry = buildCurvedStairPlanGeometry(node); if (!geometry) return null;
-    return <g onClick={() => onSelect(node.id)}><path d={geometry.footprintPath} fill="rgba(255,255,255,.08)" stroke="#171717" strokeWidth=".025" />{geometry.treadLines.map((line,index)=><line key={index} x1={line.start.x} y1={line.start.z} x2={line.end.x} y2={line.end.z} stroke="#262626" strokeWidth={index===0 || index===geometry.treadLines.length-1?'.03':'.018'} />)}<line x1={geometry.upDirection.from.x} y1={geometry.upDirection.from.z} x2={geometry.upDirection.to.x} y2={geometry.upDirection.to.z} stroke="#171717" strokeWidth=".03" markerEnd="url(#stair-up)"/></g>;
+    return <g data-selectable onClick={() => onSelect(node.id)}><path d={geometry.footprintPath} fill="rgba(255,255,255,.08)" stroke="#171717" strokeWidth=".025" />{geometry.treadLines.map((line,index)=><line key={index} x1={line.start.x} y1={line.start.z} x2={line.end.x} y2={line.end.z} stroke="#262626" strokeWidth={index===0 || index===geometry.treadLines.length-1?'.03':'.018'} />)}<line x1={geometry.upDirection.from.x} y1={geometry.upDirection.from.z} x2={geometry.upDirection.to.x} y2={geometry.upDirection.to.z} stroke="#171717" strokeWidth=".03" markerEnd="url(#stair-up)"/></g>;
   }
   const geometry = buildStraightStairPlanGeometry(node, nodes); if (!geometry) return null;
-  return <g onClick={() => onSelect(node.id)}>{geometry.segments.map((segment) => <g key={segment.node.id}><polygon points={segment.polygon.map((point) => `${point.x},${point.z}`).join(' ')} fill="rgba(255,255,255,.08)" stroke="#171717" strokeWidth=".025" />{segment.treads.map((tread, index) => <line key={index} x1={tread.start.x} y1={tread.start.z} x2={tread.end.x} y2={tread.end.z} stroke="#262626" strokeWidth=".018" />)}</g>)}<line x1={geometry.upDirection.from.x} y1={geometry.upDirection.from.z} x2={geometry.upDirection.to.x} y2={geometry.upDirection.to.z} stroke="#171717" strokeWidth=".03" fill="none" markerEnd="url(#stair-up)"/></g>;
+  return <g data-selectable onClick={() => onSelect(node.id)}>{geometry.segments.map((segment) => <g key={segment.node.id}><polygon points={segment.polygon.map((point) => `${point.x},${point.z}`).join(' ')} fill="rgba(255,255,255,.08)" stroke="#171717" strokeWidth=".025" />{segment.treads.map((tread, index) => <line key={index} x1={tread.start.x} y1={tread.start.z} x2={tread.end.x} y2={tread.end.z} stroke="#262626" strokeWidth=".018" />)}</g>)}<line x1={geometry.upDirection.from.x} y1={geometry.upDirection.from.z} x2={geometry.upDirection.to.x} y2={geometry.upDirection.to.z} stroke="#171717" strokeWidth=".03" fill="none" markerEnd="url(#stair-up)"/></g>;
 }
 function StairEntry({ node, onSelect }: { node: NodeData; onSelect: (id: string) => void }) {
   const entry = buildSpiralStairDestinationEntry(node); if (!entry) return null;
-  return <g onClick={() => onSelect(node.id)}><path d={`M ${entry.footprint.map(p=>`${p.x} ${p.z}`).join(' L ')} Z`} fill="rgba(255,255,255,.02)" stroke="#59635f" strokeWidth=".025" strokeDasharray=".08 .05"/><line x1={entry.downDirection.from.x} y1={entry.downDirection.from.z} x2={entry.downDirection.to.x} y2={entry.downDirection.to.z} stroke="#59635f" strokeWidth=".03" markerEnd="url(#stair-down)"/></g>;
+  return <g data-selectable onClick={() => onSelect(node.id)}><path d={`M ${entry.footprint.map(p=>`${p.x} ${p.z}`).join(' L ')} Z`} fill="rgba(255,255,255,.02)" stroke="#59635f" strokeWidth=".025" strokeDasharray=".08 .05"/><line x1={entry.downDirection.from.x} y1={entry.downDirection.from.z} x2={entry.downDirection.to.x} y2={entry.downDirection.to.z} stroke="#59635f" strokeWidth=".03" markerEnd="url(#stair-down)"/></g>;
 }
 function Furniture({
   node,
@@ -737,6 +740,7 @@ function Furniture({
     imageUrl = node.asset?.floorPlanUrl;
   return (
     <g
+      data-selectable
       className="furniture"
       transform={svgMatrixString(matrix)}
       onClick={() => onSelect(node.id)}
