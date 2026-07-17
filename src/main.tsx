@@ -14,6 +14,7 @@ import {
   rotatedPanDelta,
   svgMatrixString,
   ViewBox,
+  zoomViewBoxAtPoint,
   zoomExtents,
 } from "./geometry/transform";
 import { inspectNodes } from "./diagnostics/check";
@@ -50,7 +51,7 @@ type CanvasState = {
 };
 const visibilityDefault: Visibility = {
   images: true,
-  boxes: true,
+  boxes: false,
   centers: false,
   axes: false,
   names: false,
@@ -158,7 +159,7 @@ function App() {
   );
   const toggleVisibility = (key: keyof Visibility) => {
     const next = !visibility[key];
-    setVisibility((current) => ({ ...current, [key]: next }));
+    setVisibility((current) => key === "images" ? { ...current, images: next, shelves: next } : key === "centers" ? { ...current, centers: next, axes: next } : { ...current, [key]: next });
     if (key === "dimensions") setCanvases((current) => current.map((canvas) => ({ ...canvas, viewBox: computeViewBox(nodes, canvas.levelId, next) })));
   };
   return (
@@ -197,16 +198,14 @@ function App() {
             </div>
             <div className="visibility">
               {Object.entries({
-                images: "家具图片",
+                images: "家具模型",
                 boxes: "物理占地框",
-                centers: "中心点",
-                axes: "局部 +Z 轴",
+                centers: "家具中心",
                 names: "家具名称",
                 zones: "Zone",
                 slabs: "Slab（楼地面）",
                 walls: "墙体",
                 openings: "门窗",
-                shelves: "Shelf",
                 stairs: "楼梯",
                 dimensions: "外围尺寸",
               }).map(([key, label]) => (
@@ -248,7 +247,6 @@ function App() {
               </button>
             </div>
           </div>
-          <Drop onLoad={load} />
           <div className={`canvas-grid count-${Math.min(canvases.length, 4)}`}>
             {canvases.map((canvas) => (
               <CanvasPanel
@@ -275,22 +273,6 @@ function App() {
           </div>
         </section>
       </main>
-    </div>
-  );
-}
-function Drop({ onLoad }: { onLoad: (text: string, name: string) => void }) {
-  return (
-    <div
-      className="drop compact"
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={(e) => {
-        e.preventDefault();
-        const file = e.dataTransfer.files[0];
-        file?.text().then((text) => onLoad(text, file.name));
-      }}
-    >
-      <span>拖入 Pascal JSON</span>
-      <small>或使用顶部“导入 JSON”</small>
     </div>
   );
 }
@@ -494,7 +476,7 @@ function Plan({
   onSelectManual: (id: string | null) => void;
   onDeleteManual: (id: string) => void;
 }) {
-  const drag = useRef<{ x: number; y: number; box: ViewBox } | null>(null), svgRef = useRef<SVGSVGElement>(null), sceneRef = useRef<SVGGElement>(null),
+  const drag = useRef<{ x: number; y: number; box: ViewBox; moved: boolean } | null>(null), suppressClick = useRef(false), svgRef = useRef<SVGSVGElement>(null), sceneRef = useRef<SVGGElement>(null),
     [measurementStart, setMeasurementStart] = useState<MeasurementSnap | null>(null),
     [measurementHover, setMeasurementHover] = useState<MeasurementSnap | null>(null),
     [orthogonalLock, setOrthogonalLock] = useState(false),
@@ -545,22 +527,26 @@ function Plan({
       onWheel={(e) => {
         e.preventDefault();
         const factor = e.deltaY < 0 ? 0.9 : 1.1;
-        setViewBox({
-          width: viewBox.width * factor,
-          height: viewBox.height * factor,
-          minX: viewBox.minX + (viewBox.width - viewBox.width * factor) / 2,
-          minZ: viewBox.minZ + (viewBox.height - viewBox.height * factor) / 2,
-        });
+        const matrix = svgRef.current?.getScreenCTM();
+        if (!matrix) return;
+        const point = new DOMPoint(e.clientX, e.clientY).matrixTransform(matrix.inverse());
+        setViewBox(zoomViewBoxAtPoint(viewBox, { x: point.x, z: point.y }, factor));
       }}
-      onPointerDown={(e) => { if (measurementMode === "off") drag.current = { x: e.clientX, y: e.clientY, box: viewBox }; }}
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        drag.current = { x: e.clientX, y: e.clientY, box: viewBox, moved: false };
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+      }}
       onPointerMove={(e) => {
-        if (measurementMode !== "off") return;
         if (!drag.current) return;
+        const screenDx = e.clientX - drag.current.x, screenDz = e.clientY - drag.current.y;
+        if (!drag.current.moved && Math.hypot(screenDx, screenDz) < 3) return;
+        drag.current.moved = true;
         const dx =
-            ((e.clientX - drag.current.x) * drag.current.box.width) /
+            (screenDx * drag.current.box.width) /
             (e.currentTarget.clientWidth || 1),
           dz =
-            ((e.clientY - drag.current.y) * drag.current.box.height) /
+            (screenDz * drag.current.box.height) /
             (e.currentTarget.clientHeight || 1),
           pan = rotatedPanDelta(dx, dz, rotation);
         setViewBox({
@@ -569,13 +555,22 @@ function Plan({
           minZ: drag.current.box.minZ + pan.z,
         });
       }}
-      onPointerUp={() => (drag.current = null)}
+      onPointerUp={(e) => {
+        if (drag.current?.moved) {
+          suppressClick.current = true;
+          window.setTimeout(() => { suppressClick.current = false; }, 0);
+        }
+        drag.current = null;
+        e.currentTarget.releasePointerCapture?.(e.pointerId);
+      }}
+      onPointerCancel={() => { drag.current = null; }}
     >
       <svg ref={svgRef} viewBox={vb}
         onPointerMove={(event) => { if (measurementMode !== "off") { const snap = snapAtEvent(event); if (snap) setMeasurementHover(snap); } }}
         onPointerLeave={() => { if (!measurementStart) setMeasurementHover(null); }}
         onContextMenu={(event) => { if (measurementMode !== "off") { event.preventDefault(); setMeasurementStart(null); setMeasurementHover(null); } }}
         onClickCapture={(event) => {
+          if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); suppressClick.current = false; return; }
           if (measurementMode === "off") return;
           const target = event.target as Element, deleteId = target.closest("[data-delete-measurement]")?.getAttribute("data-delete-measurement"), measurementId = target.closest("[data-manual-measurement]")?.getAttribute("data-manual-measurement");
           event.preventDefault(); event.stopPropagation();
@@ -946,7 +941,7 @@ function Furniture({
           strokeWidth={selected ? 0.06 : 0.025}
         />
       )}{" "}
-      {!imageUrl && (
+      {visibility.images && !imageUrl && (
         <>
           <line
             x1={-dimensions.width / 2}
@@ -967,7 +962,7 @@ function Furniture({
         </>
       )}
       {visibility.centers && <circle r=".04" fill="#e75c3c" />}
-      {visibility.axes && (
+      {visibility.centers && (
         <line
           x2="0"
           y2={dimensions.depth / 2}

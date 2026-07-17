@@ -6,6 +6,7 @@ import {
   resolveItemPlanTransform,
   rotatePascalPlanVector,
   rotatedPanDelta,
+  zoomViewBoxAtPoint,
   zoomExtents,
 } from "./transform";
 import { buildPascalMatrixReport } from "./audit";
@@ -245,5 +246,12 @@ describe("Pascal world geometry", () => {
     expect(rotatedPanDelta(2, 0, 90).z).toBeCloseTo(2);
     expect(rotatedPanDelta(2, 0, 180).x).toBeCloseTo(2);
     expect(rotatedPanDelta(2, 0, 270).z).toBeCloseTo(-2);
+  });
+  it("keeps the world point beneath the cursor fixed while zooming", () => {
+    const before = { minX: -4, minZ: -2, width: 12, height: 8 };
+    const anchor = { x: 3, z: 1 };
+    const after = zoomViewBoxAtPoint(before, anchor, 0.8);
+    expect((anchor.x - after.minX) / after.width).toBeCloseTo((anchor.x - before.minX) / before.width);
+    expect((anchor.z - after.minZ) / after.height).toBeCloseTo((anchor.z - before.minZ) / before.height);
   });
 });
