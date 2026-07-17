@@ -22,6 +22,7 @@ import { hasValidShelfFootprint, resolveShelfData, resolveShelfPlanTransform, sh
 import { buildSpiralStairDestinationEntry, buildSpiralStairPlanGeometry, spiralStairCorners } from "./geometry/spiral-stair";
 import { buildSlabPlanGeometry } from "./geometry/slab";
 import { buildCurvedStairPlanGeometry, buildStraightStairPlanGeometry, stairCorners } from "./geometry/stairs";
+import { doorDiagnostics, DoorPlanGeometry, resolveDoorPlanGeometry } from "./geometry/door";
 import { auditSceneCoverage } from "./coverage/auditSceneCoverage";
 
 type Visibility = {
@@ -425,9 +426,12 @@ function Plan({
       [wallNodes],
     ),
     stairEntries = stairEntriesOnLevel(nodes, levelId),
+    doorGeometries = rendered.filter((node) => node.type === "door").map((node) => resolveDoorPlanGeometry(node, nodes)).filter((geometry): geometry is DoorPlanGeometry => geometry !== null),
+    doorsByWall = new Map<string, DoorPlanGeometry[]>(),
     cx = viewBox.minX + viewBox.width / 2,
     cz = viewBox.minZ + viewBox.height / 2,
     vb = `${viewBox.minX} ${viewBox.minZ} ${viewBox.width} ${viewBox.height}`;
+  for (const door of doorGeometries) doorsByWall.set(door.wallId, [...(doorsByWall.get(door.wallId) ?? []), door]);
   return (
     <div
       className="plan"
@@ -475,6 +479,10 @@ function Plan({
           </marker>
           <marker id="stair-up" markerWidth=".18" markerHeight=".18" refX=".16" refY=".09" orient="auto"><path d="M0,0 L.18,.09 L0,.18z" fill="#171717" /></marker>
           <marker id="stair-down" markerWidth=".18" markerHeight=".18" refX=".16" refY=".09" orient="auto"><path d="M0,0 L.18,.09 L0,.18z" fill="#59635f" /></marker>
+          {exactWalls.map((wall) => {
+            const doors = doorsByWall.get(wall.wallId);
+            return doors?.length ? <mask key={`door-mask-${wall.wallId}`} id={`door-mask-${wall.wallId}`} maskUnits="userSpaceOnUse"><rect x={viewBox.minX - viewBox.width} y={viewBox.minZ - viewBox.height} width={viewBox.width * 3} height={viewBox.height * 3} fill="white" />{doors.map((door) => <path key={door.doorId} d={door.openingPath} fill="black" />)}</mask> : null;
+          })}
         </defs>
         <rect
           x={viewBox.minX}
@@ -498,13 +506,14 @@ function Plan({
                   valid={n.validation.valid}
                   diagnosticCodes={n.validation.codes}
                   selected={selectedId === n.wallId}
+                  openingMaskId={doorsByWall.has(n.wallId) ? `door-mask-${n.wallId}` : undefined}
                   onSelect={onSelect}
                 />
               ))}
           {visibility.shelves && rendered.filter((n) => n.type === "shelf").map((n) => <Shelf key={n.id} node={n} nodes={nodes} selected={selectedId === n.id} onSelect={onSelect} />)}
           {visibility.openings &&
             rendered
-              .filter((n) => n.type === "door" || n.type === "window")
+              .filter((n) => n.type === "window")
               .map((n) => (
                 <Opening
                   key={n.id}
@@ -514,6 +523,7 @@ function Plan({
                   onSelect={onSelect}
                 />
               ))}
+          {visibility.openings && doorGeometries.map((geometry) => <Door key={geometry.doorId} geometry={geometry} selected={selectedId === geometry.doorId} onSelect={onSelect} />)}
           {visibility.stairs && rendered
             .filter((n) => n.type === "stair")
             .map((n) => (
@@ -590,6 +600,7 @@ function Wall({
   valid,
   diagnosticCodes,
   selected,
+  openingMaskId,
   onSelect,
 }: {
   node: NodeData;
@@ -597,6 +608,7 @@ function Wall({
   valid?: boolean;
   diagnosticCodes?: string[];
   selected: boolean;
+  openingMaskId?: string;
   onSelect: (id: string) => void;
 }) {
   if (!Array.isArray(node.start) || !Array.isArray(node.end)) return null;
@@ -609,6 +621,7 @@ function Wall({
         stroke="#202929"
         strokeWidth=".018"
         vectorEffect="non-scaling-stroke"
+        mask={openingMaskId ? `url(#${openingMaskId})` : undefined}
         onClick={() => onSelect(node.id)}
       />
     );
@@ -632,6 +645,10 @@ function Wall({
       </g>
     );
   return null;
+}
+function Door({ geometry, selected, onSelect }: { geometry: DoorPlanGeometry; selected: boolean; onSelect: (id: string) => void }) {
+  const color = selected ? "#e75c3c" : "#64748b", draw = (stroke: any, index: number) => stroke.kind === "line" ? <line key={index} x1={stroke.from.x} y1={stroke.from.z} x2={stroke.to.x} y2={stroke.to.z} stroke={color} strokeWidth={stroke.width ?? ".02"} strokeDasharray={stroke.dashed ? ".08 .06" : undefined} vectorEffect="non-scaling-stroke" /> : <path key={index} d={stroke.d} fill="none" stroke={color} strokeWidth={stroke.width ?? ".02"} strokeDasharray={stroke.dashed ? ".08 .06" : undefined} vectorEffect="non-scaling-stroke" />;
+  return <g data-selectable onClick={() => onSelect(geometry.doorId)} className="door"><path d={geometry.openingPath} fill="#f7f8f5" stroke={color} strokeWidth=".018" vectorEffect="non-scaling-stroke" />{geometry.frame.map(draw)}{geometry.leafPolygons.map((polygon, index) => <polygon key={`leaf-${index}`} points={polygon.points.map((point) => `${point.x},${point.z}`).join(" ")} fill={polygon.fill ?? "#f7f8f5"} stroke={color} strokeWidth=".02" strokeDasharray={polygon.dashed ? ".08 .06" : undefined} vectorEffect="non-scaling-stroke" />)}{geometry.leaves.map(draw)}{geometry.symbolPolygons.map((polygon, index) => <polygon key={`symbol-${index}`} points={polygon.points.map((point) => `${point.x},${point.z}`).join(" ")} fill={polygon.fill ?? "none"} stroke={color} strokeWidth=".018" strokeDasharray={polygon.dashed ? ".08 .06" : undefined} vectorEffect="non-scaling-stroke" />)}{geometry.symbols.map(draw)}</g>;
 }
 function Shelf({ node, nodes, selected, onSelect }: { node: NodeData; nodes: Record<string, NodeData>; selected: boolean; onSelect: (id: string) => void }) {
   const data = resolveShelfData(node), matrix = shelfMatrix(node, nodes);
@@ -872,6 +889,10 @@ function Inspector({
     const geometry = buildSlabPlanGeometry(node), ancestor = resolveAncestorLevelId(node.id, nodes), audit = coverage.entries.find((entry) => entry.nodeId === node.id);
     return <section className="side-section inspector"><h2>选择了一个 Slab</h2><pre>{JSON.stringify({ id: node.id, parentId: node.parentId, ancestorLevelId: ancestor.levelId, polygon: node.polygon, holes: node.holes ?? [], holeMetadata: node.holeMetadata ?? [], elevation: node.elevation ?? .05, autoFromWalls: node.autoFromWalls ?? false, visible: node.visible, outerArea: geometry?.outerArea ?? null, holeArea: geometry?.holeArea ?? null, netArea: geometry?.netArea ?? null, coverageStatus: audit?.overallStatus ?? 'none', renderRegistration: audit?.actualRenderStatus ?? 'none' }, null, 2)}</pre></section>;
   }
+  if (node.type === "door") {
+    const geometry = resolveDoorPlanGeometry(node, nodes), audit = coverage.entries.find((entry) => entry.nodeId === node.id);
+    return <section className="side-section inspector"><h2>选择了一个 Door</h2><pre>{JSON.stringify({ id: node.id, parentId: node.parentId, wallId: node.wallId, ancestorLevelId: geometry?.ancestorLevelId, doorType: node.doorType ?? "hinged", openingKind: node.openingKind ?? "door", openingShape: node.openingShape ?? "rectangle", position: node.position, resolvedWallLocalPosition: node.position?.[0], resolvedWorldPosition: geometry?.center, resolvedTangent: geometry?.tangent, resolvedNormal: geometry?.normal, width: node.width ?? .9, height: node.height ?? 2.1, side: node.side, rotation: node.rotation, hingesSide: node.hingesSide ?? "left", swingDirection: node.swingDirection ?? "inward", slideDirection: node.slideDirection ?? "left", trackStyle: node.trackStyle ?? "none", leafCount: node.leafCount ?? 1, garagePanelCount: node.garagePanelCount ?? 4, frameThickness: node.frameThickness ?? .05, frameDepth: node.frameDepth ?? .07, threshold: node.threshold ?? true, operationState: node.operationState ?? 0, swingAngle: node.swingAngle ?? 0, physicalOpeningGeometry: geometry?.opening, frameGeometry: geometry?.frame, leafGeometry: { lines: geometry?.leaves, polygons: geometry?.leafPolygons }, symbolGeometry: { lines: geometry?.symbols, polygons: geometry?.symbolPolygons }, symbolSource: geometry?.symbolSource, pascalDefaultFields: geometry?.defaultFields, supportMatrixStatus: audit?.overallStatus, renderedRegistryEntry: { renderStrategy: audit?.actualRenderStatus, physicalOpeningRendered: audit?.physicalOpeningRendered, symbolRendered: audit?.symbolRendered } }, null, 2)}</pre></section>;
+  }
   return (
     <section className="side-section inspector">
       <h2>{node.name || node.id}</h2>
@@ -931,7 +952,8 @@ function transformDiagnostics(nodes: Record<string, NodeData>): Diagnostic[] {
     if (transform.status === 'error') diagnostics.push({ severity: 'error', code: transform.error === 'parent_cycle' ? 'shelf_parent_cycle' : transform.error === 'missing_parent' ? 'missing_shelf_parent' : 'unsupported_shelf_parent_transform', message: '无法确定 Shelf 的楼层坐标', nodeId: node.id, sourcePath: `nodes.${node.id}.parentId` });
     void data; return diagnostics;
   });
-  return [...itemDiagnostics, ...shelfDiagnostics];
+  const doorIssues = Object.values(nodes).filter((node) => node.type === "door").flatMap((node) => doorDiagnostics(node, nodes));
+  return [...itemDiagnostics, ...shelfDiagnostics, ...doorIssues];
 }
 function Diagnostics({ diagnostics }: { diagnostics: Diagnostic[] }) {
   return (

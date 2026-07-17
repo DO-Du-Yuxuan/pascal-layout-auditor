@@ -186,7 +186,7 @@ describe("Pascal Core coverage audit", () => {
       }),
     );
   });
-  it("emits warnings for partially supported door variants", () => {
+  it("registers a supported Door physical opening", () => {
     const wall = {
       id: "wall",
       type: "wall",
@@ -204,16 +204,12 @@ describe("Pascal Core coverage audit", () => {
       width: 0.9,
     };
     const report = auditSceneCoverage({ level, wall, door } as any);
-    expect(
-      report.entries.find((entry) => entry.nodeId === "door")?.overallStatus,
-    ).toBe("partially-supported");
-    expect(report.diagnostics).toContainEqual(
-      expect.objectContaining({
-        severity: "warning",
-        code: "partially-supported",
-        nodeId: "door",
-      }),
-    );
+    expect(report.entries.find((entry) => entry.nodeId === "door")).toMatchObject({ overallStatus: "supported-pascal-equivalent", actualRenderStatus: "self" });
+  });
+  it("lists every Pascal Door variant independently with source-backed status", () => {
+    const variants = ["opening", "hinged", "double", "french", "folding", "pocket", "barn", "sliding", "garage-sectional", "garage-rollup", "garage-tiltup"];
+    expect(Object.keys(currentVariantSupport.door)).toEqual(variants);
+    expect(Object.values(currentVariantSupport.door).every((status) => status === "supported-pascal-equivalent")).toBe(true);
   });
   it("locks accepted item, wall, shelf, slab and stair statuses to their evidence", () => {
     const byKind = Object.fromEntries(

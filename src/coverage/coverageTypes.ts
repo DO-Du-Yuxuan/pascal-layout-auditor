@@ -32,6 +32,7 @@ export type DemoSupport = {
     | "parent-emitted"
     | "intentionally-hidden"
     | "none";
+  physicalOpening?: "complete" | "partial" | "none";
   inspectorSupport: "complete" | "partial" | "none";
   diagnosticSupport: "complete" | "partial" | "none";
   testCoverage: "complete" | "partial" | "none";

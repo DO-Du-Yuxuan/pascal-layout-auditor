@@ -147,6 +147,7 @@ const enums: Partial<Record<BuiltinKind, Record<string, string[]>>> = {
     ],
     doorCategory: ["interior", "garage"],
     trackStyle: ["none", "visible", "pocket", "overhead"],
+    openingKind: ["door", "opening"],
   },
   window: {
     windowType: [
@@ -930,18 +931,31 @@ const demo = (kind: BuiltinKind): DemoSupport => {
       overallStatus: "supported-pascal-equivalent",
       evidence: { files: ["src/main.tsx"], functions: ["Polygon"], tests: [] },
     };
-  if (kind === "door" || kind === "window")
+  if (kind === "door")
+    return {
+      ...base,
+      levelResolution: "complete",
+      transformResolution: "complete",
+      floorplanRendering: "pascal-equivalent",
+      physicalOpening: "complete",
+      inspectorSupport: "complete",
+      diagnosticSupport: "complete",
+      testCoverage: "complete",
+      overallStatus: "supported-pascal-equivalent",
+      evidence: {
+        files: ["src/geometry/door.ts", "src/main.tsx", "src/coverage/renderedNodeRegistry.ts"],
+        functions: ["resolveDoorPlanGeometry", "Door", "collectCurrentRenderRegistry"],
+        tests: ["src/geometry/door.test.ts", "src/coverage/coverage.test.ts"],
+      },
+    };
+  if (kind === "window")
     return {
       ...base,
       levelResolution: "complete",
       transformResolution: "partial",
       floorplanRendering: "demo-custom-symbol",
       overallStatus: "partially-supported",
-      evidence: {
-        files: ["src/geometry/transform.ts", "src/main.tsx"],
-        functions: ["resolveWallOpeningTransform", "Opening"],
-        tests: [],
-      },
+      evidence: { files: ["src/geometry/transform.ts", "src/main.tsx"], functions: ["resolveWallOpeningTransform", "Opening"], tests: [] },
     };
   return base;
 };
