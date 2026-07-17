@@ -606,7 +606,7 @@ function Plan({
           height={viewBox.height}
           fill="#f7f8f5"
         />
-        <g ref={sceneRef} transform={`rotate(${rotation} ${cx} ${cz})`}>
+        <g ref={sceneRef} style={{ transform: `rotate(${rotation}deg)`, transformOrigin: `${cx}px ${cz}px`, transition: "transform 240ms cubic-bezier(.2,.8,.2,1)" }}>
           {visibility.slabs && rendered.filter((n) => n.type === "slab" && n.visible !== false).map((n) => <Slab key={n.id} node={n} selected={selectedId === n.id} onSelect={onSelect} />)}
           {visibility.zones &&
             zones.map((n) => <Polygon key={n.id} node={n} />)}
@@ -648,11 +648,12 @@ function Plan({
               nodes={nodes}
               visibility={visibility}
               selected={selectedId === n.id}
+              viewRotation={rotation}
               markerId={`arrow-${levelId}`}
               onSelect={onSelect}
             />
           ))}
-          {visibility.zones && zones.map((n) => <ZoneLabel key={`zone-label-${n.id}`} node={n} />)}
+          {visibility.zones && zones.map((n) => <ZoneLabel key={`zone-label-${n.id}`} node={n} viewRotation={rotation} />)}
           {visibility.dimensions && <ExteriorDimensions report={exteriorDimensions} viewRotation={rotation} unit={measurementUnit} onSelect={onSelectDimension} />}
           <ManualMeasurements measurements={manualMeasurements} preview={measurementMode !== "off" && measurementStart && measurementHover ? { mode: activeMeasurementMode, start: measurementStart, end: measurementHover } : null} unit={measurementUnit} viewRotation={rotation} selectedId={selectedManualId} onSelect={onSelectManual} onDelete={onDeleteManual} />
           {measurementMode !== "off" && measurementHover && <SnapIndicator snap={measurementHover} active={Boolean(measurementStart)} />}
@@ -683,10 +684,10 @@ function Polygon({ node }: { node: NodeData }) {
   const points = polygon.map((point) => `${point.x},${point.z}`).join(" ");
   return <polygon points={points} fill={color} fillOpacity=".12" stroke={color} strokeOpacity=".32" strokeWidth=".03" />;
 }
-function ZoneLabel({ node }: { node: NodeData }) {
+function ZoneLabel({ node, viewRotation }: { node: NodeData; viewRotation: number }) {
   const label = zoneLabelPoint(node), color = zoneColor(node);
   if (!label) return null;
-  return <text x={label.x} y={label.z} className="zone-label" fontSize=".22" fontWeight="700" textAnchor="middle" dominantBaseline="middle" style={{ fill: color }} stroke="#ffffff" strokeWidth=".035" strokeOpacity=".9" paintOrder="stroke" pointerEvents="none">{node.name || "Zone"}</text>;
+  return <text x={label.x} y={label.z} className="zone-label" fontSize=".22" fontWeight="700" textAnchor="middle" dominantBaseline="middle" style={{ fill: color, transform: `rotate(${-viewRotation}deg)`, transformOrigin: `${label.x}px ${label.z}px`, transition: "transform 240ms cubic-bezier(.2,.8,.2,1)" }} stroke="#ffffff" strokeWidth=".035" strokeOpacity=".9" paintOrder="stroke" pointerEvents="none">{node.name || "Zone"}</text>;
 }
 function ExteriorDimensions({ report, viewRotation, unit, onSelect }: { report: ReturnType<typeof buildExteriorDimensions>; viewRotation: number; unit: MeasurementUnit; onSelect: (dimension: DimensionSegment) => void }) {
   const color = "#4b5563";
@@ -909,6 +910,7 @@ function Furniture({
   nodes,
   visibility,
   selected,
+  viewRotation,
   markerId,
   onSelect,
 }: {
@@ -916,6 +918,7 @@ function Furniture({
   nodes: Record<string, NodeData>;
   visibility: Visibility;
   selected: boolean;
+  viewRotation: number;
   markerId: string;
   onSelect: (id: string) => void;
 }) {
@@ -923,7 +926,9 @@ function Furniture({
     transform = resolveItemPlanTransform(node.id, nodes), imageUrl = node.asset?.floorPlanUrl as string | undefined, cropEntry = useFloorplanImageCrop(imageUrl);
   if (!dimensions || transform.status === "error") return null;
   const matrix = composePascalTransformWithWorldToSvg(transform),
-    cropPlacement = cropEntry && !cropEntry.isFallback ? computeCropPlacement({ x: cropEntry.cropX, y: cropEntry.cropY, width: cropEntry.cropWidth, height: cropEntry.cropHeight }, dimensions.width, dimensions.depth) : null;
+    cropPlacement = cropEntry && !cropEntry.isFallback ? computeCropPlacement({ x: cropEntry.cropX, y: cropEntry.cropY, width: cropEntry.cropWidth, height: cropEntry.cropHeight }, dimensions.width, dimensions.depth) : null,
+    labelY = dimensions.depth / 2 + 0.15,
+    labelCounterRotation = transform.rotationY * 180 / Math.PI - viewRotation;
   return (
     <g
       data-selectable
@@ -979,10 +984,11 @@ function Furniture({
       )}{" "}
       {visibility.names && (
         <text
-          y={dimensions.depth / 2 + 0.15}
+          y={labelY}
           textAnchor="middle"
           className="item-label"
           fontSize=".14"
+          style={{ transform: `rotate(${labelCounterRotation}deg)`, transformOrigin: `0px ${labelY}px`, transition: "transform 240ms cubic-bezier(.2,.8,.2,1)" }}
         >
           {node.name || node.asset?.name || node.id}
         </text>
