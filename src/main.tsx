@@ -17,6 +17,7 @@ import {
   zoomExtents,
 } from "./geometry/transform";
 import { inspectNodes } from "./diagnostics/check";
+import { buildExperimentalWalls, Wall as PascalWall } from "./geometry/walls";
 
 type Visibility = {
   images: boolean;
@@ -26,6 +27,7 @@ type Visibility = {
   names: boolean;
   zones: boolean;
   walls: boolean;
+  experimentalWalls: boolean;
   openings: boolean;
 };
 type CanvasState = {
@@ -42,6 +44,7 @@ const visibilityDefault: Visibility = {
   names: false,
   zones: true,
   walls: true,
+  experimentalWalls: false,
   openings: true,
 };
 const emptyView: ViewBox = { minX: -5, minZ: -5, width: 10, height: 10 };
@@ -165,6 +168,7 @@ function App() {
                 names: "家具名称",
                 zones: "Zone",
                 walls: "墙体",
+                experimentalWalls: "精确墙体（实验）",
                 openings: "门窗",
               }).map(([key, label]) => (
                 <label key={key}>
@@ -395,6 +399,11 @@ function Plan({
   const drag = useRef<{ x: number; y: number; box: ViewBox } | null>(null),
     rendered = objectsOnLevel(nodes, levelId),
     items = rendered.filter((n) => n.type === "item"),
+    wallNodes = rendered.filter((n) => n.type === "wall") as PascalWall[],
+    experimentalWalls = useMemo(
+      () => buildExperimentalWalls(wallNodes),
+      [wallNodes],
+    ),
     cx = viewBox.minX + viewBox.width / 2,
     cz = viewBox.minZ + viewBox.height / 2,
     vb = `${viewBox.minX} ${viewBox.minZ} ${viewBox.width} ${viewBox.height}`;
@@ -457,13 +466,20 @@ function Plan({
               .filter((n) => n.type === "zone")
               .map((n) => <Polygon key={n.id} node={n} />)}
           {visibility.walls &&
-            rendered
-              .filter((n) => n.type === "wall")
-              .map((n) => (
+            (visibility.experimentalWalls ? experimentalWalls : wallNodes).map((n: any) => (
                 <Wall
-                  key={n.id}
-                  node={n}
-                  selected={selectedId === n.id}
+                  key={visibility.experimentalWalls ? n.wallId : n.id}
+                  node={visibility.experimentalWalls ? nodes[n.wallId] : n}
+                  footprint={
+                    visibility.experimentalWalls ? n.footprint : undefined
+                  }
+                  valid={
+                    visibility.experimentalWalls ? n.validation.valid : true
+                  }
+                  diagnosticCodes={
+                    visibility.experimentalWalls ? n.validation.codes : undefined
+                  }
+                  selected={selectedId === (visibility.experimentalWalls ? n.wallId : n.id)}
                   onSelect={onSelect}
                 />
               ))}
@@ -545,14 +561,49 @@ function Polygon({ node }: { node: NodeData }) {
 }
 function Wall({
   node,
+  footprint,
+  valid,
+  diagnosticCodes,
   selected,
   onSelect,
 }: {
   node: NodeData;
+  footprint?: Array<{ x: number; y: number }>;
+  valid?: boolean;
+  diagnosticCodes?: string[];
   selected: boolean;
   onSelect: (id: string) => void;
 }) {
   if (!Array.isArray(node.start) || !Array.isArray(node.end)) return null;
+  if (footprint?.length && valid)
+    return (
+      <polygon
+        points={footprint.map((point) => `${point.x},${point.y}`).join(" ")}
+        fill={selected ? "#e75c3c" : "#303a3b"}
+        stroke="#202929"
+        strokeWidth=".018"
+        vectorEffect="non-scaling-stroke"
+        onClick={() => onSelect(node.id)}
+      />
+    );
+  if (footprint && !valid)
+    return (
+      <g
+        aria-label={`experimental wall diagnostic: ${diagnosticCodes?.join(", ") || "unknown"}`}
+        onClick={() => onSelect(node.id)}
+      >
+        <title>{diagnosticCodes?.join(", ") || "wall_invalid_footprint"}</title>
+        <line
+          x1={node.start[0]}
+          y1={node.start[1]}
+          x2={node.end[0]}
+          y2={node.end[1]}
+          stroke="#d95446"
+          strokeWidth=".05"
+        />
+        <circle cx={node.start[0]} cy={node.start[1]} r=".12" fill="#d95446" />
+      </g>
+    );
   return (
     <line
       x1={node.start[0]}
