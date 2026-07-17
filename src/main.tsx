@@ -23,6 +23,7 @@ import { buildSpiralStairDestinationEntry, buildSpiralStairPlanGeometry, spiralS
 import { buildSlabPlanGeometry } from "./geometry/slab";
 import { buildCurvedStairPlanGeometry, buildStraightStairPlanGeometry, stairCorners } from "./geometry/stairs";
 import { zoneColor, zoneLabelPoint, zonePoints } from "./geometry/zone";
+import { buildExteriorDimensions, DimensionSegment, dimensionOverlayBounds, EXTENSION_OVERSHOOT_M, INNER_CHAIN_OFFSET_M, OVERALL_CHAIN_OFFSET_M, uprightDimensionAngle } from "./geometry/exterior-dimensions";
 import { auditSceneCoverage } from "./coverage/auditSceneCoverage";
 
 type Visibility = {
@@ -37,6 +38,7 @@ type Visibility = {
   shelves: boolean;
   stairs: boolean;
   openings: boolean;
+  dimensions: boolean;
 };
 type CanvasState = {
   id: number;
@@ -56,6 +58,7 @@ const visibilityDefault: Visibility = {
   shelves: true,
   stairs: true,
   openings: true,
+  dimensions: true,
 };
 const emptyView: ViewBox = { minX: -5, minZ: -5, width: 10, height: 10 };
 
@@ -67,6 +70,7 @@ function App() {
     ]),
     [nextId, setNextId] = useState(2),
     [selectedId, setSelectedId] = useState<string | null>(null),
+    [selectedDimension, setSelectedDimension] = useState<DimensionSegment | null>(null),
     [visibility, setVisibility] = useState(visibilityDefault);
   const input = useRef<HTMLInputElement>(null);
   const nodes = data?.nodes || {};
@@ -83,11 +87,12 @@ function App() {
       setData(parsed);
       setFile(name);
       setSelectedId(null);
+      setSelectedDimension(null);
       setCanvases([
         {
           id: 1,
           levelId: first,
-          viewBox: computeViewBox(parsed.nodes, first),
+          viewBox: computeViewBox(parsed.nodes, first, true),
           rotation: 0,
         },
       ]);
@@ -119,7 +124,7 @@ function App() {
       {
         id: nextId,
         levelId,
-        viewBox: computeViewBox(nodes, levelId),
+        viewBox: computeViewBox(nodes, levelId, visibility.dimensions),
         rotation: 0,
       },
     ]);
@@ -131,10 +136,16 @@ function App() {
         ? current.filter((canvas) => canvas.id !== id)
         : current,
     );
+  const dimensionDiagnostics = useMemo(() => Object.values(nodes).filter((node) => node.type === "level").flatMap((level) => buildExteriorDimensions(nodes, level.id).diagnostics), [nodes]);
   const coverage = useMemo(() => auditSceneCoverage(nodes, Array.isArray(data?.raw?.installedPlugins) ? data.raw.installedPlugins : [], visibility), [nodes, data, visibility]), diagnostics = useMemo(
-    () => (data ? [...data.diagnostics, ...transformDiagnostics(nodes), ...coverage.diagnostics] : []),
-    [data, nodes],
+    () => (data ? [...data.diagnostics, ...transformDiagnostics(nodes), ...coverage.diagnostics, ...dimensionDiagnostics] : []),
+    [data, nodes, coverage, dimensionDiagnostics],
   );
+  const toggleVisibility = (key: keyof Visibility) => {
+    const next = !visibility[key];
+    setVisibility((current) => ({ ...current, [key]: next }));
+    if (key === "dimensions") setCanvases((current) => current.map((canvas) => ({ ...canvas, viewBox: computeViewBox(nodes, canvas.levelId, next) })));
+  };
   return (
     <div className="app">
       <header className="topbar">
@@ -182,17 +193,13 @@ function App() {
                 openings: "门窗",
                 shelves: "Shelf",
                 stairs: "楼梯",
+                dimensions: "外围尺寸",
               }).map(([key, label]) => (
                 <label key={key}>
                   <input
                     type="checkbox"
                     checked={visibility[key as keyof Visibility]}
-                    onChange={() =>
-                      setVisibility((v) => ({
-                        ...v,
-                        [key]: !v[key as keyof Visibility],
-                      }))
-                    }
+                    onChange={() => toggleVisibility(key as keyof Visibility)}
                   />
                   {label}
                 </label>
@@ -205,6 +212,7 @@ function App() {
             nodes={nodes}
             viewBox={canvases[0]?.viewBox || emptyView}
             coverage={coverage}
+            dimension={selectedDimension}
           />
           <Diagnostics diagnostics={diagnostics} />
           <CoverageReport coverage={coverage} />
@@ -231,7 +239,8 @@ function App() {
                 levels={levels}
                 visibility={visibility}
                 selectedId={selectedId}
-                onSelect={setSelectedId}
+                onSelect={(id) => { setSelectedId(id); setSelectedDimension(null); }}
+                onSelectDimension={(dimension) => { setSelectedId(null); setSelectedDimension(dimension); }}
                 onUpdate={updateCanvas}
                 onRemove={removeCanvas}
                 canRemove={canvases.length > 1}
@@ -266,6 +275,7 @@ function CanvasPanel({
   visibility,
   selectedId,
   onSelect,
+  onSelectDimension,
   onUpdate,
   onRemove,
   canRemove,
@@ -276,6 +286,7 @@ function CanvasPanel({
   visibility: Visibility;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  onSelectDimension: (dimension: DimensionSegment) => void;
   onUpdate: (id: number, u: Partial<CanvasState>) => void;
   onRemove: (id: number) => void;
   canRemove: boolean;
@@ -291,7 +302,7 @@ function CanvasPanel({
             onChange={(e) =>
               onUpdate(canvas.id, {
                 levelId: e.target.value,
-                viewBox: computeViewBox(nodes, e.target.value),
+                viewBox: computeViewBox(nodes, e.target.value, visibility.dimensions),
               })
             }
           >
@@ -321,7 +332,7 @@ function CanvasPanel({
           </button>
           <button
             onClick={() =>
-              onUpdate(canvas.id, { viewBox: computeViewBox(nodes, levelId) })
+              onUpdate(canvas.id, { viewBox: computeViewBox(nodes, levelId, visibility.dimensions) })
             }
           >
             适配
@@ -346,6 +357,7 @@ function CanvasPanel({
         visibility={visibility}
         selectedId={selectedId}
         onSelect={onSelect}
+        onSelectDimension={onSelectDimension}
       />
     </article>
   );
@@ -361,6 +373,7 @@ function stairEntriesOnLevel(nodes: Record<string, NodeData>, levelId: string) {
 function computeViewBox(
   nodes: Record<string, NodeData>,
   levelId: string,
+  includeDimensions = true,
 ): ViewBox {
   const points: { x: number; z: number }[] = [];
   const rendered = objectsOnLevel(nodes, levelId), exactWallById = new Map(buildExperimentalWalls(rendered.filter((node) => node.type === 'wall') as PascalWall[]).map((wall) => [wall.wallId, wall]));
@@ -396,6 +409,7 @@ function computeViewBox(
     }
   }
   for (const stair of stairEntriesOnLevel(nodes, levelId)) points.push(...spiralStairCorners(stair));
+  if (includeDimensions && levelId) points.push(...dimensionOverlayBounds(buildExteriorDimensions(nodes, levelId)));
   return zoomExtents(points, 1);
 }
 function Plan({
@@ -407,6 +421,7 @@ function Plan({
   visibility,
   selectedId,
   onSelect,
+  onSelectDimension,
 }: {
   nodes: Record<string, NodeData>;
   levelId: string;
@@ -416,6 +431,7 @@ function Plan({
   visibility: Visibility;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  onSelectDimension: (dimension: DimensionSegment) => void;
 }) {
   const drag = useRef<{ x: number; y: number; box: ViewBox } | null>(null),
     rendered = objectsOnLevel(nodes, levelId),
@@ -427,6 +443,7 @@ function Plan({
       [wallNodes],
     ),
     stairEntries = stairEntriesOnLevel(nodes, levelId),
+    exteriorDimensions = useMemo(() => buildExteriorDimensions(nodes, levelId), [nodes, levelId]),
     cx = viewBox.minX + viewBox.width / 2,
     cz = viewBox.minZ + viewBox.height / 2,
     vb = `${viewBox.minX} ${viewBox.minZ} ${viewBox.width} ${viewBox.height}`;
@@ -532,6 +549,7 @@ function Plan({
             />
           ))}
           {visibility.zones && zones.map((n) => <ZoneLabel key={`zone-label-${n.id}`} node={n} />)}
+          {visibility.dimensions && <ExteriorDimensions report={exteriorDimensions} viewRotation={rotation} onSelect={onSelectDimension} />}
         </g>
       </svg>
       <Compass rotation={rotation} />
@@ -562,6 +580,30 @@ function ZoneLabel({ node }: { node: NodeData }) {
   const label = zoneLabelPoint(node), color = zoneColor(node);
   if (!label) return null;
   return <text x={label.x} y={label.z} className="zone-label" fontSize=".22" fontWeight="700" textAnchor="middle" dominantBaseline="middle" style={{ fill: color }} stroke="#ffffff" strokeWidth=".035" strokeOpacity=".9" paintOrder="stroke" pointerEvents="none">{node.name || "Zone"}</text>;
+}
+function ExteriorDimensions({ report, viewRotation, onSelect }: { report: ReturnType<typeof buildExteriorDimensions>; viewRotation: number; onSelect: (dimension: DimensionSegment) => void }) {
+  const color = "#4b5563";
+  return <g className="exterior-dimensions">{report.dimensions.map((dimension) => {
+    const offset = dimension.dimensionLayer === "inner-chain" ? INNER_CHAIN_OFFSET_M : OVERALL_CHAIN_OFFSET_M,
+      start: [number, number] = [dimension.start[0] + dimension.outwardNormal[0] * offset, dimension.start[1] + dimension.outwardNormal[1] * offset],
+      end: [number, number] = [dimension.end[0] + dimension.outwardNormal[0] * offset, dimension.end[1] + dimension.outwardNormal[1] * offset],
+      midpoint: [number, number] = [(start[0] + end[0]) / 2, (start[1] + end[1]) / 2],
+      textWidth = Math.max(.24, dimension.displayMillimeters.length * .105), fitsInside = dimension.valueMeters > textWidth + .16,
+      label: [number, number] = fitsInside ? midpoint : [end[0] + dimension.direction[0] * (textWidth / 2 + .14), end[1] + dimension.direction[1] * (textWidth / 2 + .14)],
+      gapHalf = Math.min(textWidth / 2 + .05, dimension.valueMeters * .4),
+      beforeGap: [number, number] = [midpoint[0] - dimension.direction[0] * gapHalf, midpoint[1] - dimension.direction[1] * gapHalf],
+      afterGap: [number, number] = [midpoint[0] + dimension.direction[0] * gapHalf, midpoint[1] + dimension.direction[1] * gapHalf],
+      extensionStart: [number, number] = [start[0] + dimension.outwardNormal[0] * EXTENSION_OVERSHOOT_M, start[1] + dimension.outwardNormal[1] * EXTENSION_OVERSHOOT_M],
+      extensionEnd: [number, number] = [end[0] + dimension.outwardNormal[0] * EXTENSION_OVERSHOOT_M, end[1] + dimension.outwardNormal[1] * EXTENSION_OVERSHOOT_M],
+      tick: [number, number] = [(dimension.direction[0] + dimension.outwardNormal[0]) * .065, (dimension.direction[1] + dimension.outwardNormal[1]) * .065], angle = uprightDimensionAngle(dimension.direction, viewRotation);
+    return <g data-selectable key={dimension.id} onClick={() => onSelect(dimension)} style={{ cursor: "pointer" }}>
+      <line x1={dimension.start[0]} y1={dimension.start[1]} x2={extensionStart[0]} y2={extensionStart[1]} stroke={color} strokeWidth="1" vectorEffect="non-scaling-stroke" />
+      <line x1={dimension.end[0]} y1={dimension.end[1]} x2={extensionEnd[0]} y2={extensionEnd[1]} stroke={color} strokeWidth="1" vectorEffect="non-scaling-stroke" />
+      {fitsInside ? <><line x1={start[0]} y1={start[1]} x2={beforeGap[0]} y2={beforeGap[1]} stroke={color} strokeWidth="1" vectorEffect="non-scaling-stroke"/><line x1={afterGap[0]} y1={afterGap[1]} x2={end[0]} y2={end[1]} stroke={color} strokeWidth="1" vectorEffect="non-scaling-stroke"/></> : <line x1={start[0]} y1={start[1]} x2={label[0] + dimension.direction[0] * textWidth / 2} y2={label[1] + dimension.direction[1] * textWidth / 2} stroke={color} strokeWidth="1" vectorEffect="non-scaling-stroke"/>}
+      {[start, end].map((point, index) => <line key={index} x1={point[0] - tick[0]} y1={point[1] - tick[1]} x2={point[0] + tick[0]} y2={point[1] + tick[1]} stroke={color} strokeWidth="1.2" vectorEffect="non-scaling-stroke" />)}
+      <text x={label[0]} y={label[1]} transform={`rotate(${angle} ${label[0]} ${label[1]})`} textAnchor="middle" dominantBaseline="middle" fontFamily="DM Mono, monospace" fontSize=".18" fill={color} stroke="#f7f8f5" strokeWidth=".04" paintOrder="stroke">{dimension.displayMillimeters}</text>
+    </g>;
+  })}</g>;
 }
 function Slab({ node, selected, onSelect }: { node: NodeData; selected: boolean; onSelect: (id: string) => void }) {
   const geometry = buildSlabPlanGeometry(node);
@@ -819,12 +861,15 @@ function Inspector({
   nodes,
   viewBox,
   coverage,
+  dimension,
 }: {
   node: NodeData | null;
   nodes: Record<string, NodeData>;
   viewBox: ViewBox;
   coverage: ReturnType<typeof auditSceneCoverage>;
+  dimension: DimensionSegment | null;
 }) {
+  if (dimension) return <section className="side-section inspector"><h2>外围尺寸</h2><pre>{JSON.stringify({ chainId: dimension.chainId, segmentId: dimension.id, levelId: dimension.levelId, componentId: dimension.componentId, runId: dimension.runId, dimensionLayer: dimension.dimensionLayer, startWorld: dimension.start, endWorld: dimension.end, valueMeters: dimension.valueMeters, displayMillimeters: dimension.displayMillimeters, roundingDifferenceMeters: Number(dimension.displayMillimeters) / 1000 - dimension.valueMeters, direction: dimension.direction, outwardNormal: dimension.outwardNormal, sourceWallIds: dimension.sourceWallIds, sourceOpeningIds: dimension.sourceOpeningIds, sourceStart: dimension.sourceStart, sourceEnd: dimension.sourceEnd, sourcePaths: dimension.sourcePaths, exteriorContourSource: "union of formal physical wall footprints / outer rings only", unionAlgorithm: dimension.unionAlgorithm, geometryMethod: dimension.method, registry: "derived-overlay-feature" }, null, 2)}</pre></section>;
   if (!node)
     return (
       <section className="side-section inspector">
