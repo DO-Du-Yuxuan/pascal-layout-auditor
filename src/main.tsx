@@ -198,7 +198,7 @@ function App() {
             <div className="visibility">
               {Object.entries({
                 images: "家具图片",
-                boxes: "数学占地框",
+                boxes: "物理占地框",
                 centers: "中心点",
                 axes: "局部 +Z 轴",
                 names: "家具名称",
@@ -932,7 +932,7 @@ function Furniture({
     >
       {visibility.images && imageUrl && (
         cropEntry && cropPlacement
-          ? <svg x={-dimensions.width / 2 + cropPlacement.offsetX} y={-dimensions.depth / 2 + cropPlacement.offsetY} width={cropPlacement.drawWidth} height={cropPlacement.drawHeight} viewBox={`${cropEntry.cropX} ${cropEntry.cropY} ${cropEntry.cropWidth} ${cropEntry.cropHeight}`} preserveAspectRatio="xMidYMid meet" overflow="hidden"><image href={imageUrl} x="0" y="0" width={cropEntry.naturalWidth} height={cropEntry.naturalHeight} preserveAspectRatio="xMidYMid meet" /></svg>
+          ? <svg x={-dimensions.width / 2 + cropPlacement.offsetX} y={-dimensions.depth / 2 + cropPlacement.offsetY} width={cropPlacement.drawWidth} height={cropPlacement.drawHeight} viewBox={`${cropEntry.cropX} ${cropEntry.cropY} ${cropEntry.cropWidth} ${cropEntry.cropHeight}`} preserveAspectRatio="none" overflow="hidden"><image href={imageUrl} x="0" y="0" width={cropEntry.naturalWidth} height={cropEntry.naturalHeight} preserveAspectRatio="xMidYMid meet" /></svg>
           : <image href={imageUrl} x={-dimensions.width / 2} y={-dimensions.depth / 2} width={dimensions.width} height={dimensions.depth} preserveAspectRatio="none" />
       )}
       {visibility.boxes && (
@@ -1042,7 +1042,7 @@ function ItemInspector({ node, nodes, viewBox, unit }: { node: NodeData; nodes: 
       <dt>所属楼层</dt><dd>{transform.ancestorLevelId || "未确定"}</dd>
       <dt>画布范围</dt><dd>{`${formatPanelLength(viewBox.width, unit)} × ${formatPanelLength(viewBox.height, unit)}`}</dd>
     </dl>
-    <pre>{JSON.stringify({ id: node.id, parentId: node.parentId, position: node.position, rotation: node.rotation, scale: node.scale, physicalDimensionsMeters: node.asset?.dimensions, floorPlanImageUrl: imageUrl ?? null, naturalImageWidth: cropEntry?.naturalWidth ?? null, naturalImageHeight: cropEntry?.naturalHeight ?? null, alphaThreshold: cropEntry?.alphaThreshold ?? ALPHA_THRESHOLD, cropX: cropEntry?.cropX ?? null, cropY: cropEntry?.cropY ?? null, cropWidth: cropEntry?.cropWidth ?? null, cropHeight: cropEntry?.cropHeight ?? null, cropApplied: Boolean(cropEntry && !cropEntry.isFallback && placement), cropFallbackReason: cropEntry?.fallbackReason ?? (imageUrl ? "loading" : "missing-url"), contentAspectRatio: placement?.contentAspectRatio ?? null, physicalAspectRatio: placement?.physicalAspectRatio ?? (dimensions ? dimensions.width / dimensions.depth : null), aspectDifferencePercent: placement?.aspectDifferencePercent ?? null, finalDrawWidth: placement?.drawWidth ?? dimensions?.width ?? null, finalDrawHeight: placement?.drawHeight ?? dimensions?.depth ?? null, drawOffsetX: placement?.offsetX ?? 0, drawOffsetY: placement?.offsetY ?? 0, uniformScaleApplied: Boolean(cropEntry && !cropEntry.isFallback && placement) }, null, 2)}</pre>
+    <pre>{JSON.stringify({ id: node.id, parentId: node.parentId, position: node.position, rotation: node.rotation, scale: node.scale, physicalDimensionsMeters: node.asset?.dimensions, floorPlanImageUrl: imageUrl ?? null, naturalImageWidth: cropEntry?.naturalWidth ?? null, naturalImageHeight: cropEntry?.naturalHeight ?? null, alphaThreshold: cropEntry?.alphaThreshold ?? ALPHA_THRESHOLD, cropX: cropEntry?.cropX ?? null, cropY: cropEntry?.cropY ?? null, cropWidth: cropEntry?.cropWidth ?? null, cropHeight: cropEntry?.cropHeight ?? null, cropApplied: Boolean(cropEntry && !cropEntry.isFallback && placement), cropFallbackReason: cropEntry?.fallbackReason ?? (imageUrl ? "loading" : "missing-url"), contentAspectRatio: placement?.contentAspectRatio ?? null, physicalAspectRatio: placement?.physicalAspectRatio ?? (dimensions ? dimensions.width / dimensions.depth : null), aspectDifferencePercent: placement?.aspectDifferencePercent ?? null, finalDrawWidth: placement?.drawWidth ?? dimensions?.width ?? null, finalDrawHeight: placement?.drawHeight ?? dimensions?.depth ?? null, drawOffsetX: placement?.offsetX ?? 0, drawOffsetY: placement?.offsetY ?? 0, scaleX: placement?.scaleX ?? null, scaleY: placement?.scaleY ?? null, uniformScaleApplied: placement?.uniformScaleApplied ?? false, fourEdgeFitApplied: Boolean(cropEntry && !cropEntry.isFallback && placement) }, null, 2)}</pre>
   </section>;
 }
 function Stats({ nodes }: { nodes: Record<string, NodeData> }) {

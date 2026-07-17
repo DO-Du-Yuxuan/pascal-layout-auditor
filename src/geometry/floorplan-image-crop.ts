@@ -18,7 +18,7 @@ export type FloorplanImageCropCacheEntry = {
   isFallback: boolean;
   fallbackReason: "empty-alpha" | "image-load-failed" | "canvas-unavailable" | "pixel-read-failed" | "invalid-pixel-data" | null;
 };
-export type CropPlacement = { drawWidth: number; drawHeight: number; offsetX: number; offsetY: number; uniformScale: number; contentAspectRatio: number; physicalAspectRatio: number; aspectDifferencePercent: number };
+export type CropPlacement = { drawWidth: number; drawHeight: number; offsetX: number; offsetY: number; scaleX: number; scaleY: number; uniformScaleApplied: boolean; contentAspectRatio: number; physicalAspectRatio: number; aspectDifferencePercent: number };
 export type ImagePixelLoader = (imageUrl: string) => Promise<ImagePixelSource>;
 
 const resolvedCache = new Map<string, FloorplanImageCropCacheEntry>(), pendingCache = new Map<string, Promise<FloorplanImageCropCacheEntry>>(), listeners = new Set<() => void>();
@@ -37,8 +37,8 @@ export function scanAlphaContentBounds(data: Uint8ClampedArray, width: number, h
 
 export function computeCropPlacement(bounds: PixelBounds, targetWidth: number, targetHeight: number): CropPlacement | null {
   if (![bounds.width, bounds.height, targetWidth, targetHeight].every((value) => Number.isFinite(value) && value > 0)) return null;
-  const uniformScale = Math.min(targetWidth / bounds.width, targetHeight / bounds.height), drawWidth = bounds.width * uniformScale, drawHeight = bounds.height * uniformScale, contentAspectRatio = bounds.width / bounds.height, physicalAspectRatio = targetWidth / targetHeight;
-  return { drawWidth, drawHeight, offsetX: (targetWidth - drawWidth) / 2, offsetY: (targetHeight - drawHeight) / 2, uniformScale, contentAspectRatio, physicalAspectRatio, aspectDifferencePercent: Math.abs(contentAspectRatio - physicalAspectRatio) / physicalAspectRatio * 100 };
+  const scaleX = targetWidth / bounds.width, scaleY = targetHeight / bounds.height, contentAspectRatio = bounds.width / bounds.height, physicalAspectRatio = targetWidth / targetHeight;
+  return { drawWidth: targetWidth, drawHeight: targetHeight, offsetX: 0, offsetY: 0, scaleX, scaleY, uniformScaleApplied: Math.abs(scaleX - scaleY) <= 1e-12, contentAspectRatio, physicalAspectRatio, aspectDifferencePercent: Math.abs(contentAspectRatio - physicalAspectRatio) / physicalAspectRatio * 100 };
 }
 
 const fallback = (imageUrl: string, reason: FloorplanImageCropCacheEntry["fallbackReason"], naturalWidth = 0, naturalHeight = 0): FloorplanImageCropCacheEntry => ({ imageUrl, naturalWidth, naturalHeight, alphaThreshold: ALPHA_THRESHOLD, cropX: 0, cropY: 0, cropWidth: naturalWidth, cropHeight: naturalHeight, isFallback: true, fallbackReason: reason });
@@ -73,7 +73,7 @@ export function floorplanImageCropDiagnostics(nodes: Record<string, NodeData>): 
     const entry = peekFloorplanImageCrop(node.asset.floorPlanUrl); if (!entry) continue;
     if (entry.isFallback) diagnostics.push({ severity: "warning", code: entry.fallbackReason === "empty-alpha" ? "floorplan_image_empty_alpha" : "floorplan_image_crop_unavailable", message: entry.fallbackReason === "empty-alpha" ? "floorPlan 图片没有达到 alpha 阈值的有效像素，已回退整图显示" : `floorPlan 图片无法读取像素，已回退整图显示：${entry.fallbackReason}`, nodeId: node.id, sourcePath: `nodes.${node.id}.asset.floorPlanUrl` });
     const dimensions = finalDimensions(node), placement = dimensions && !entry.isFallback && entry.cropWidth > 0 && entry.cropHeight > 0 ? computeCropPlacement({ x: entry.cropX, y: entry.cropY, width: entry.cropWidth, height: entry.cropHeight }, dimensions.width, dimensions.depth) : null;
-    if (placement && placement.aspectDifferencePercent > ASPECT_MISMATCH_THRESHOLD * 100) diagnostics.push({ severity: "warning", code: "floorplan_image_aspect_mismatch", message: `裁切内容与物理占地框宽高比差异 ${placement.aspectDifferencePercent.toFixed(2)}%，仍按等比例显示`, nodeId: node.id, sourcePath: `nodes.${node.id}.asset.floorPlanUrl` });
+    if (placement && placement.aspectDifferencePercent > ASPECT_MISMATCH_THRESHOLD * 100) diagnostics.push({ severity: "warning", code: "floorplan_image_aspect_mismatch", message: `裁切内容与物理占地框宽高比差异 ${placement.aspectDifferencePercent.toFixed(2)}%，已使用 X/Y 独立缩放实现四边贴合`, nodeId: node.id, sourcePath: `nodes.${node.id}.asset.floorPlanUrl` });
   }
   return diagnostics;
 }

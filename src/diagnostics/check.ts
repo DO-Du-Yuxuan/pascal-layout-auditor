@@ -63,7 +63,7 @@ export function inspectNodes(nodes: Record<string, NodeData>): Diagnostic[] {
       diagnostics.push({
         severity: "info",
         code: "missing_floor_plan_image",
-        message: "缺少 floorPlanUrl，将显示数学占地框",
+        message: "缺少 floorPlanUrl，将显示物理占地框",
         nodeId: node.id,
         sourcePath: `nodes.${node.id}.asset.floorPlanUrl`,
       });
