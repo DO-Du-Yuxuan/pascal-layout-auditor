@@ -533,7 +533,7 @@ function Plan({
         setViewBox(zoomViewBoxAtPoint(viewBox, { x: point.x, z: point.y }, factor));
       }}
       onPointerDown={(e) => {
-        if (measurementMode !== "off" || e.button !== 0 || (e.target as Element).closest("[data-manual-measurement]")) return;
+        if (measurementMode !== "off" || e.button !== 0 || (e.target as Element).closest("[data-selectable]")) return;
         drag.current = { x: e.clientX, y: e.clientY, box: viewBox, moved: false };
         e.currentTarget.setPointerCapture?.(e.pointerId);
       }}
@@ -935,7 +935,7 @@ function Furniture({
           ? <svg x={-dimensions.width / 2 + cropPlacement.offsetX} y={-dimensions.depth / 2 + cropPlacement.offsetY} width={cropPlacement.drawWidth} height={cropPlacement.drawHeight} viewBox={`${cropEntry.cropX} ${cropEntry.cropY} ${cropEntry.cropWidth} ${cropEntry.cropHeight}`} preserveAspectRatio="none" overflow="hidden"><image href={imageUrl} x="0" y="0" width={cropEntry.naturalWidth} height={cropEntry.naturalHeight} preserveAspectRatio="xMidYMid meet" /></svg>
           : <image href={imageUrl} x={-dimensions.width / 2} y={-dimensions.depth / 2} width={dimensions.width} height={dimensions.depth} preserveAspectRatio="none" />
       )}
-      {visibility.boxes && (
+      {(visibility.boxes || selected) && (
         <rect
           x={-dimensions.width / 2}
           y={-dimensions.depth / 2}
