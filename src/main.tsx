@@ -427,11 +427,9 @@ function Plan({
     ),
     stairEntries = stairEntriesOnLevel(nodes, levelId),
     doorGeometries = rendered.filter((node) => node.type === "door").map((node) => resolveDoorPlanGeometry(node, nodes)).filter((geometry): geometry is DoorPlanGeometry => geometry !== null),
-    doorsByWall = new Map<string, DoorPlanGeometry[]>(),
     cx = viewBox.minX + viewBox.width / 2,
     cz = viewBox.minZ + viewBox.height / 2,
     vb = `${viewBox.minX} ${viewBox.minZ} ${viewBox.width} ${viewBox.height}`;
-  for (const door of doorGeometries) doorsByWall.set(door.wallId, [...(doorsByWall.get(door.wallId) ?? []), door]);
   return (
     <div
       className="plan"
@@ -479,10 +477,6 @@ function Plan({
           </marker>
           <marker id="stair-up" markerWidth=".18" markerHeight=".18" refX=".16" refY=".09" orient="auto"><path d="M0,0 L.18,.09 L0,.18z" fill="#171717" /></marker>
           <marker id="stair-down" markerWidth=".18" markerHeight=".18" refX=".16" refY=".09" orient="auto"><path d="M0,0 L.18,.09 L0,.18z" fill="#59635f" /></marker>
-          {exactWalls.map((wall) => {
-            const doors = doorsByWall.get(wall.wallId);
-            return doors?.length ? <mask key={`door-mask-${wall.wallId}`} id={`door-mask-${wall.wallId}`} maskUnits="userSpaceOnUse"><rect x={viewBox.minX - viewBox.width} y={viewBox.minZ - viewBox.height} width={viewBox.width * 3} height={viewBox.height * 3} fill="white" />{doors.map((door) => <path key={door.doorId} d={door.openingPath} fill="black" />)}</mask> : null;
-          })}
         </defs>
         <rect
           x={viewBox.minX}
@@ -506,7 +500,6 @@ function Plan({
                   valid={n.validation.valid}
                   diagnosticCodes={n.validation.codes}
                   selected={selectedId === n.wallId}
-                  openingMaskId={doorsByWall.has(n.wallId) ? `door-mask-${n.wallId}` : undefined}
                   onSelect={onSelect}
                 />
               ))}
@@ -600,7 +593,6 @@ function Wall({
   valid,
   diagnosticCodes,
   selected,
-  openingMaskId,
   onSelect,
 }: {
   node: NodeData;
@@ -608,7 +600,6 @@ function Wall({
   valid?: boolean;
   diagnosticCodes?: string[];
   selected: boolean;
-  openingMaskId?: string;
   onSelect: (id: string) => void;
 }) {
   if (!Array.isArray(node.start) || !Array.isArray(node.end)) return null;
@@ -621,7 +612,6 @@ function Wall({
         stroke="#202929"
         strokeWidth=".018"
         vectorEffect="non-scaling-stroke"
-        mask={openingMaskId ? `url(#${openingMaskId})` : undefined}
         onClick={() => onSelect(node.id)}
       />
     );
@@ -648,7 +638,7 @@ function Wall({
 }
 function Door({ geometry, selected, onSelect }: { geometry: DoorPlanGeometry; selected: boolean; onSelect: (id: string) => void }) {
   const color = selected ? "#e75c3c" : "#64748b", draw = (stroke: any, index: number) => stroke.kind === "line" ? <line key={index} x1={stroke.from.x} y1={stroke.from.z} x2={stroke.to.x} y2={stroke.to.z} stroke={color} strokeWidth={stroke.width ?? ".02"} strokeDasharray={stroke.dashed ? ".08 .06" : undefined} vectorEffect="non-scaling-stroke" /> : <path key={index} d={stroke.d} fill="none" stroke={color} strokeWidth={stroke.width ?? ".02"} strokeDasharray={stroke.dashed ? ".08 .06" : undefined} vectorEffect="non-scaling-stroke" />;
-  return <g data-selectable onClick={() => onSelect(geometry.doorId)} className="door"><path d={geometry.openingPath} fill="#f7f8f5" stroke={color} strokeWidth=".018" vectorEffect="non-scaling-stroke" />{geometry.frame.map(draw)}{geometry.leafPolygons.map((polygon, index) => <polygon key={`leaf-${index}`} points={polygon.points.map((point) => `${point.x},${point.z}`).join(" ")} fill={polygon.fill ?? "#f7f8f5"} stroke={color} strokeWidth=".02" strokeDasharray={polygon.dashed ? ".08 .06" : undefined} vectorEffect="non-scaling-stroke" />)}{geometry.leaves.map(draw)}{geometry.symbolPolygons.map((polygon, index) => <polygon key={`symbol-${index}`} points={polygon.points.map((point) => `${point.x},${point.z}`).join(" ")} fill={polygon.fill ?? "none"} stroke={color} strokeWidth=".018" strokeDasharray={polygon.dashed ? ".08 .06" : undefined} vectorEffect="non-scaling-stroke" />)}{geometry.symbols.map(draw)}</g>;
+  return <g data-selectable onClick={() => onSelect(geometry.doorId)} className="door">{geometry.leafPolygons.map((polygon, index) => <polygon key={`leaf-${index}`} points={polygon.points.map((point) => `${point.x},${point.z}`).join(" ")} fill="none" stroke={color} strokeWidth=".02" strokeDasharray={polygon.dashed ? ".08 .06" : undefined} vectorEffect="non-scaling-stroke" />)}{geometry.leaves.map(draw)}{geometry.symbolPolygons.map((polygon, index) => <polygon key={`symbol-${index}`} points={polygon.points.map((point) => `${point.x},${point.z}`).join(" ")} fill="none" stroke={color} strokeWidth=".018" strokeDasharray={polygon.dashed ? ".08 .06" : undefined} vectorEffect="non-scaling-stroke" />)}{geometry.symbols.map(draw)}</g>;
 }
 function Shelf({ node, nodes, selected, onSelect }: { node: NodeData; nodes: Record<string, NodeData>; selected: boolean; onSelect: (id: string) => void }) {
   const data = resolveShelfData(node), matrix = shelfMatrix(node, nodes);

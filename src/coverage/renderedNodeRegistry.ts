@@ -111,7 +111,7 @@ export function collectCurrentRenderRegistry(nodes: Record<string, NodeData>, vi
         kind: node.type,
         variant: variant(node),
         renderStrategy: "self",
-        physicalOpeningRendered: true,
+        physicalOpeningRendered: false,
         symbolRendered: visibility.openings !== false && node.openingKind !== "opening",
       });
     else if (node.type === "window" && resolveWallOpeningTransform(node, nodes))
