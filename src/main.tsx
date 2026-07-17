@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import sampleText from "../sample-data/9618b316-3eab-4fcf-9a21-0f7316479968.json?raw";
 import "./styles.css";
@@ -24,6 +24,7 @@ import { buildSlabPlanGeometry } from "./geometry/slab";
 import { buildCurvedStairPlanGeometry, buildStraightStairPlanGeometry, stairCorners } from "./geometry/stairs";
 import { zoneColor, zoneLabelPoint, zonePoints } from "./geometry/zone";
 import { buildAlignedDimensionDisplay, buildExteriorDimensions, DimensionSegment, dimensionDisplayGeometry, dimensionOverlayBounds, EXTENSION_OVERSHOOT_M, INNER_CHAIN_OFFSET_M, OVERALL_CHAIN_OFFSET_M, uprightDimensionAngle } from "./geometry/exterior-dimensions";
+import { buildManualMeasurementGeometry, buildMeasurementSnapSegments, formatMeasurement, ManualMeasurement, MeasurementMode, MeasurementSnap, MeasurementUnit, snapMeasurementPoint } from "./geometry/manual-measurement";
 import { auditSceneCoverage } from "./coverage/auditSceneCoverage";
 
 type Visibility = {
@@ -71,8 +72,12 @@ function App() {
     [nextId, setNextId] = useState(2),
     [selectedId, setSelectedId] = useState<string | null>(null),
     [selectedDimension, setSelectedDimension] = useState<DimensionSegment | null>(null),
+    [selectedManualId, setSelectedManualId] = useState<string | null>(null),
+    [manualMeasurements, setManualMeasurements] = useState<ManualMeasurement[]>([]),
+    [measurementMode, setMeasurementMode] = useState<MeasurementMode>("off"),
+    [measurementUnit, setMeasurementUnit] = useState<MeasurementUnit>("millimeters"),
     [visibility, setVisibility] = useState(visibilityDefault);
-  const input = useRef<HTMLInputElement>(null);
+  const input = useRef<HTMLInputElement>(null), nextMeasurementId = useRef(1);
   const nodes = data?.nodes || {};
   const levels = Object.values(nodes).filter((n) => n.type === "level");
   const load = (text: string, name: string) => {
@@ -88,6 +93,10 @@ function App() {
       setFile(name);
       setSelectedId(null);
       setSelectedDimension(null);
+      setSelectedManualId(null);
+      setManualMeasurements([]);
+      setMeasurementMode("off");
+      nextMeasurementId.current = 1;
       setCanvases([
         {
           id: 1,
@@ -213,6 +222,8 @@ function App() {
             viewBox={canvases[0]?.viewBox || emptyView}
             coverage={coverage}
             dimension={selectedDimension}
+            manualMeasurement={manualMeasurements.find((item) => item.id === selectedManualId) ?? null}
+            measurementUnit={measurementUnit}
           />
           <Diagnostics diagnostics={diagnostics} />
           <CoverageReport coverage={coverage} />
@@ -223,7 +234,11 @@ function App() {
               <span className="eyebrow">PLAN VIEWS</span>
               <h1>画布工作区</h1>
             </div>
-            <div>
+            <div className="measurement-toolbar">
+              <label>单位 <select value={measurementUnit} onChange={(event) => setMeasurementUnit(event.target.value as MeasurementUnit)}><option value="millimeters">毫米</option><option value="feet-inches">英尺–英寸</option></select></label>
+              <div className="measure-modes" aria-label="手动测量模式">
+                {([['off','关闭'],['aligned','对齐'],['horizontal','水平'],['vertical','垂直']] as const).map(([mode, label]) => <button key={mode} className={measurementMode === mode ? "active" : ""} onClick={() => setMeasurementMode(mode)}>{label}</button>)}
+              </div>
               <button className="primary" onClick={addCanvas}>
                 + 添加画布
               </button>
@@ -239,8 +254,15 @@ function App() {
                 levels={levels}
                 visibility={visibility}
                 selectedId={selectedId}
-                onSelect={(id) => { setSelectedId(id); setSelectedDimension(null); }}
-                onSelectDimension={(dimension) => { setSelectedId(null); setSelectedDimension(dimension); }}
+                measurementMode={measurementMode}
+                measurementUnit={measurementUnit}
+                manualMeasurements={manualMeasurements.filter((item) => item.levelId === (canvas.levelId || levels[0]?.id || ""))}
+                selectedManualId={selectedManualId}
+                onSelect={(id) => { setSelectedId(id); setSelectedDimension(null); setSelectedManualId(null); }}
+                onSelectDimension={(dimension) => { setSelectedId(null); setSelectedDimension(dimension); setSelectedManualId(null); }}
+                onCreateMeasurement={(measurement) => { const created = { ...measurement, id: `measure-${nextMeasurementId.current++}`, createdAt: Date.now() }; setManualMeasurements((current) => [...current, created]); setSelectedId(null); setSelectedDimension(null); setSelectedManualId(created.id); }}
+                onSelectManual={(id) => { setSelectedId(null); setSelectedDimension(null); setSelectedManualId(id); }}
+                onDeleteManual={(id) => { setManualMeasurements((current) => current.filter((item) => item.id !== id)); setSelectedManualId((current) => current === id ? null : current); }}
                 onUpdate={updateCanvas}
                 onRemove={removeCanvas}
                 canRemove={canvases.length > 1}
@@ -276,6 +298,13 @@ function CanvasPanel({
   selectedId,
   onSelect,
   onSelectDimension,
+  measurementMode,
+  measurementUnit,
+  manualMeasurements,
+  selectedManualId,
+  onCreateMeasurement,
+  onSelectManual,
+  onDeleteManual,
   onUpdate,
   onRemove,
   canRemove,
@@ -287,6 +316,13 @@ function CanvasPanel({
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onSelectDimension: (dimension: DimensionSegment) => void;
+  measurementMode: MeasurementMode;
+  measurementUnit: MeasurementUnit;
+  manualMeasurements: ManualMeasurement[];
+  selectedManualId: string | null;
+  onCreateMeasurement: (measurement: Omit<ManualMeasurement, "id" | "createdAt">) => void;
+  onSelectManual: (id: string | null) => void;
+  onDeleteManual: (id: string) => void;
   onUpdate: (id: number, u: Partial<CanvasState>) => void;
   onRemove: (id: number) => void;
   canRemove: boolean;
@@ -358,6 +394,13 @@ function CanvasPanel({
         selectedId={selectedId}
         onSelect={onSelect}
         onSelectDimension={onSelectDimension}
+        measurementMode={measurementMode}
+        measurementUnit={measurementUnit}
+        manualMeasurements={manualMeasurements}
+        selectedManualId={selectedManualId}
+        onCreateMeasurement={onCreateMeasurement}
+        onSelectManual={onSelectManual}
+        onDeleteManual={onDeleteManual}
       />
     </article>
   );
@@ -422,6 +465,13 @@ function Plan({
   selectedId,
   onSelect,
   onSelectDimension,
+  measurementMode,
+  measurementUnit,
+  manualMeasurements,
+  selectedManualId,
+  onCreateMeasurement,
+  onSelectManual,
+  onDeleteManual,
 }: {
   nodes: Record<string, NodeData>;
   levelId: string;
@@ -432,8 +482,17 @@ function Plan({
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onSelectDimension: (dimension: DimensionSegment) => void;
+  measurementMode: MeasurementMode;
+  measurementUnit: MeasurementUnit;
+  manualMeasurements: ManualMeasurement[];
+  selectedManualId: string | null;
+  onCreateMeasurement: (measurement: Omit<ManualMeasurement, "id" | "createdAt">) => void;
+  onSelectManual: (id: string | null) => void;
+  onDeleteManual: (id: string) => void;
 }) {
-  const drag = useRef<{ x: number; y: number; box: ViewBox } | null>(null),
+  const drag = useRef<{ x: number; y: number; box: ViewBox } | null>(null), svgRef = useRef<SVGSVGElement>(null), sceneRef = useRef<SVGGElement>(null),
+    [measurementStart, setMeasurementStart] = useState<MeasurementSnap | null>(null),
+    [measurementHover, setMeasurementHover] = useState<MeasurementSnap | null>(null),
     rendered = objectsOnLevel(nodes, levelId),
     items = rendered.filter((n) => n.type === "item"),
     zones = rendered.filter((n) => n.type === "zone"),
@@ -447,9 +506,34 @@ function Plan({
     cx = viewBox.minX + viewBox.width / 2,
     cz = viewBox.minZ + viewBox.height / 2,
     vb = `${viewBox.minX} ${viewBox.minZ} ${viewBox.width} ${viewBox.height}`;
+  const snapSegments = useMemo(() => buildMeasurementSnapSegments(nodes, levelId), [nodes, levelId]);
+  useEffect(() => { setMeasurementStart(null); setMeasurementHover(null); }, [measurementMode, levelId]);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { setMeasurementStart(null); setMeasurementHover(null); }
+      if ((event.key === "Delete" || event.key === "Backspace") && selectedManualId) { event.preventDefault(); onDeleteManual(selectedManualId); }
+    };
+    window.addEventListener("keydown", onKeyDown); return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedManualId, onDeleteManual]);
+  const eventWorldPoint = (event: { clientX: number; clientY: number }): [number, number] | null => {
+    const matrix = sceneRef.current?.getScreenCTM(); if (!matrix) return null;
+    const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse()); return [point.x, point.y];
+  };
+  const snapAtEvent = (event: { clientX: number; clientY: number }) => {
+    const point = eventWorldPoint(event); if (!point) return null;
+    const width = svgRef.current?.clientWidth || 1, height = svgRef.current?.clientHeight || 1, tolerance = Math.max(viewBox.width / width, viewBox.height / height) * 12;
+    return snapMeasurementPoint(point, snapSegments, tolerance);
+  };
+  const commitMeasurementPoint = (snap: MeasurementSnap) => {
+    if (!measurementStart) { setMeasurementStart(snap); setMeasurementHover(snap); return; }
+    if (measurementMode === "off") return;
+    const geometry = buildManualMeasurementGeometry(measurementStart.point, snap.point, measurementMode);
+    if (geometry.valueMeters > .0005) onCreateMeasurement({ levelId, mode: measurementMode, start: measurementStart, end: snap });
+    setMeasurementStart(null); setMeasurementHover(null);
+  };
   return (
     <div
-      className="plan"
+      className={`plan ${measurementMode !== "off" ? "measuring" : ""}`}
       onWheel={(e) => {
         e.preventDefault();
         const factor = e.deltaY < 0 ? 0.9 : 1.1;
@@ -460,10 +544,9 @@ function Plan({
           minZ: viewBox.minZ + (viewBox.height - viewBox.height * factor) / 2,
         });
       }}
-      onPointerDown={(e) =>
-        (drag.current = { x: e.clientX, y: e.clientY, box: viewBox })
-      }
+      onPointerDown={(e) => { if (measurementMode === "off") drag.current = { x: e.clientX, y: e.clientY, box: viewBox }; }}
       onPointerMove={(e) => {
+        if (measurementMode !== "off") return;
         if (!drag.current) return;
         const dx =
             ((e.clientX - drag.current.x) * drag.current.box.width) /
@@ -480,7 +563,19 @@ function Plan({
       }}
       onPointerUp={() => (drag.current = null)}
     >
-      <svg viewBox={vb} onClick={(event) => { if (!(event.target as Element).closest("[data-selectable]")) onSelect(null); }}>
+      <svg ref={svgRef} viewBox={vb}
+        onPointerMove={(event) => { if (measurementMode !== "off") { const snap = snapAtEvent(event); if (snap) setMeasurementHover(snap); } }}
+        onPointerLeave={() => { if (!measurementStart) setMeasurementHover(null); }}
+        onContextMenu={(event) => { if (measurementMode !== "off") { event.preventDefault(); setMeasurementStart(null); setMeasurementHover(null); } }}
+        onClickCapture={(event) => {
+          if (measurementMode === "off") return;
+          const target = event.target as Element, deleteId = target.closest("[data-delete-measurement]")?.getAttribute("data-delete-measurement"), measurementId = target.closest("[data-manual-measurement]")?.getAttribute("data-manual-measurement");
+          event.preventDefault(); event.stopPropagation();
+          if (deleteId) { onDeleteManual(deleteId); return; }
+          if (measurementId) { onSelectManual(measurementId); return; }
+          const snap = snapAtEvent(event); if (snap) commitMeasurementPoint(snap);
+        }}
+        onClick={(event) => { if (!(event.target as Element).closest("[data-selectable]")) { onSelect(null); onSelectManual(null); } }}>
         <defs>
           <marker
             id={`arrow-${levelId}`}
@@ -502,7 +597,7 @@ function Plan({
           height={viewBox.height}
           fill="#f7f8f5"
         />
-        <g transform={`rotate(${rotation} ${cx} ${cz})`}>
+        <g ref={sceneRef} transform={`rotate(${rotation} ${cx} ${cz})`}>
           {visibility.slabs && rendered.filter((n) => n.type === "slab" && n.visible !== false).map((n) => <Slab key={n.id} node={n} selected={selectedId === n.id} onSelect={onSelect} />)}
           {visibility.zones &&
             zones.map((n) => <Polygon key={n.id} node={n} />)}
@@ -549,9 +644,12 @@ function Plan({
             />
           ))}
           {visibility.zones && zones.map((n) => <ZoneLabel key={`zone-label-${n.id}`} node={n} />)}
-          {visibility.dimensions && <ExteriorDimensions report={exteriorDimensions} viewRotation={rotation} onSelect={onSelectDimension} />}
+          {visibility.dimensions && <ExteriorDimensions report={exteriorDimensions} viewRotation={rotation} unit={measurementUnit} onSelect={onSelectDimension} />}
+          <ManualMeasurements measurements={manualMeasurements} preview={measurementMode !== "off" && measurementStart && measurementHover ? { mode: measurementMode, start: measurementStart, end: measurementHover } : null} unit={measurementUnit} viewRotation={rotation} selectedId={selectedManualId} onSelect={onSelectManual} onDelete={onDeleteManual} />
+          {measurementMode !== "off" && measurementHover && <SnapIndicator snap={measurementHover} active={Boolean(measurementStart)} />}
         </g>
       </svg>
+      {measurementMode !== "off" && <div className="measure-hint">{measurementStart ? "移动鼠标并点击第二点 · Esc/右键取消" : `${measurementMode === "aligned" ? "对齐" : measurementMode === "horizontal" ? "水平" : "垂直"}测量：点击第一点`}</div>}
       <Compass rotation={rotation} />
       <div className="legend">{vb} m</div>
     </div>
@@ -581,14 +679,14 @@ function ZoneLabel({ node }: { node: NodeData }) {
   if (!label) return null;
   return <text x={label.x} y={label.z} className="zone-label" fontSize=".22" fontWeight="700" textAnchor="middle" dominantBaseline="middle" style={{ fill: color }} stroke="#ffffff" strokeWidth=".035" strokeOpacity=".9" paintOrder="stroke" pointerEvents="none">{node.name || "Zone"}</text>;
 }
-function ExteriorDimensions({ report, viewRotation, onSelect }: { report: ReturnType<typeof buildExteriorDimensions>; viewRotation: number; onSelect: (dimension: DimensionSegment) => void }) {
+function ExteriorDimensions({ report, viewRotation, unit, onSelect }: { report: ReturnType<typeof buildExteriorDimensions>; viewRotation: number; unit: MeasurementUnit; onSelect: (dimension: DimensionSegment) => void }) {
   const color = "#4b5563";
   return <g className="exterior-dimensions">{buildAlignedDimensionDisplay(report).map((dimension) => {
-    const display = dimensionDisplayGeometry(report, dimension), offset = dimension.dimensionLayer === "inner-chain" ? INNER_CHAIN_OFFSET_M : OVERALL_CHAIN_OFFSET_M,
+    const displayValue = formatMeasurement(dimension.valueMeters, unit), display = dimensionDisplayGeometry(report, dimension), offset = dimension.dimensionLayer === "inner-chain" ? INNER_CHAIN_OFFSET_M : OVERALL_CHAIN_OFFSET_M,
       start: [number, number] = [display.faceStart[0] + dimension.outwardNormal[0] * offset, display.faceStart[1] + dimension.outwardNormal[1] * offset],
       end: [number, number] = [display.faceEnd[0] + dimension.outwardNormal[0] * offset, display.faceEnd[1] + dimension.outwardNormal[1] * offset],
       midpoint: [number, number] = [(start[0] + end[0]) / 2, (start[1] + end[1]) / 2],
-      textWidth = Math.max(.24, dimension.displayMillimeters.length * .105), fitsInside = dimension.valueMeters > textWidth + .16,
+      textWidth = Math.max(.24, displayValue.length * .105), fitsInside = dimension.valueMeters > textWidth + .16,
       label: [number, number] = fitsInside ? midpoint : [end[0] + dimension.direction[0] * (textWidth / 2 + .14), end[1] + dimension.direction[1] * (textWidth / 2 + .14)],
       gapHalf = Math.min(textWidth / 2 + .05, dimension.valueMeters * .4),
       beforeGap: [number, number] = [midpoint[0] - dimension.direction[0] * gapHalf, midpoint[1] - dimension.direction[1] * gapHalf],
@@ -601,9 +699,32 @@ function ExteriorDimensions({ report, viewRotation, onSelect }: { report: Return
       <line x1={display.edgeEnd[0]} y1={display.edgeEnd[1]} x2={extensionEnd[0]} y2={extensionEnd[1]} stroke={color} strokeWidth="1" vectorEffect="non-scaling-stroke" />
       {fitsInside ? <><line x1={start[0]} y1={start[1]} x2={beforeGap[0]} y2={beforeGap[1]} stroke={color} strokeWidth="1" vectorEffect="non-scaling-stroke"/><line x1={afterGap[0]} y1={afterGap[1]} x2={end[0]} y2={end[1]} stroke={color} strokeWidth="1" vectorEffect="non-scaling-stroke"/></> : <line x1={start[0]} y1={start[1]} x2={label[0] + dimension.direction[0] * textWidth / 2} y2={label[1] + dimension.direction[1] * textWidth / 2} stroke={color} strokeWidth="1" vectorEffect="non-scaling-stroke"/>}
       {[start, end].map((point, index) => <line key={index} x1={point[0] - tick[0]} y1={point[1] - tick[1]} x2={point[0] + tick[0]} y2={point[1] + tick[1]} stroke={color} strokeWidth="1.2" vectorEffect="non-scaling-stroke" />)}
-      <text x={label[0]} y={label[1]} transform={`rotate(${angle} ${label[0]} ${label[1]})`} textAnchor="middle" dominantBaseline="middle" fontFamily="DM Mono, monospace" fontSize=".18" fill={color} stroke="#f7f8f5" strokeWidth=".04" paintOrder="stroke">{dimension.displayMillimeters}</text>
+      <text x={label[0]} y={label[1]} transform={`rotate(${angle} ${label[0]} ${label[1]})`} textAnchor="middle" dominantBaseline="middle" fontFamily="DM Mono, monospace" fontSize=".18" fill={color} stroke="#f7f8f5" strokeWidth=".04" paintOrder="stroke">{displayValue}</text>
     </g>;
   })}</g>;
+}
+function ManualMeasurements({ measurements, preview, unit, viewRotation, selectedId, onSelect, onDelete }: { measurements: ManualMeasurement[]; preview: { mode: Exclude<MeasurementMode, "off">; start: MeasurementSnap; end: MeasurementSnap } | null; unit: MeasurementUnit; viewRotation: number; selectedId: string | null; onSelect: (id: string | null) => void; onDelete: (id: string) => void }) {
+  return <g className="manual-measurements">
+    {measurements.map((measurement) => <ManualMeasurementGraphic key={measurement.id} measurement={measurement} unit={unit} viewRotation={viewRotation} selected={selectedId === measurement.id} onSelect={onSelect} onDelete={onDelete} />)}
+    {preview && <ManualMeasurementGraphic measurement={{ id: "measurement-preview", levelId: "", createdAt: 0, ...preview }} unit={unit} viewRotation={viewRotation} selected={false} preview />}
+  </g>;
+}
+function ManualMeasurementGraphic({ measurement, unit, viewRotation, selected, preview = false, onSelect, onDelete }: { measurement: ManualMeasurement; unit: MeasurementUnit; viewRotation: number; selected: boolean; preview?: boolean; onSelect?: (id: string | null) => void; onDelete?: (id: string) => void }) {
+  const geometry = buildManualMeasurementGeometry(measurement.start.point, measurement.end.point, measurement.mode), color = preview ? "#d97706" : selected ? "#e75c3c" : "#246b72", label = formatMeasurement(geometry.valueMeters, unit), angle = uprightDimensionAngle(geometry.direction, viewRotation), tick: [number, number] = [geometry.normal[0] * .08, geometry.normal[1] * .08], deletePoint: [number, number] = [geometry.labelPoint[0] + geometry.normal[0] * .32, geometry.labelPoint[1] + geometry.normal[1] * .32];
+  if (geometry.valueMeters <= .0005) return null;
+  return <g data-selectable={!preview || undefined} data-manual-measurement={!preview ? measurement.id : undefined} onClick={(event) => { if (!preview) { event.stopPropagation(); onSelect?.(measurement.id); } }} style={{ cursor: preview ? "crosshair" : "pointer" }}>
+    {geometry.extensionLines.map((line, index) => <line key={index} x1={line.start[0]} y1={line.start[1]} x2={line.end[0]} y2={line.end[1]} stroke={color} strokeWidth="1" strokeDasharray={preview ? "4 3" : undefined} vectorEffect="non-scaling-stroke" />)}
+    <line x1={geometry.measurementStart[0]} y1={geometry.measurementStart[1]} x2={geometry.measurementEnd[0]} y2={geometry.measurementEnd[1]} stroke={color} strokeWidth={selected ? "1.8" : "1.2"} strokeDasharray={preview ? "5 4" : undefined} vectorEffect="non-scaling-stroke" />
+    {[geometry.measurementStart, geometry.measurementEnd].map((point, index) => <line key={index} x1={point[0] - tick[0]} y1={point[1] - tick[1]} x2={point[0] + tick[0]} y2={point[1] + tick[1]} stroke={color} strokeWidth="1.3" vectorEffect="non-scaling-stroke" />)}
+    <circle cx={measurement.start.point[0]} cy={measurement.start.point[1]} r=".045" fill={color} />
+    <circle cx={measurement.end.point[0]} cy={measurement.end.point[1]} r=".045" fill={color} />
+    <text x={geometry.labelPoint[0]} y={geometry.labelPoint[1]} transform={`rotate(${angle} ${geometry.labelPoint[0]} ${geometry.labelPoint[1]})`} textAnchor="middle" dominantBaseline="middle" fontFamily="DM Mono, monospace" fontSize=".18" fill={color} stroke="#f7f8f5" strokeWidth=".045" paintOrder="stroke" pointerEvents="none">{label}</text>
+    {selected && !preview && <g data-delete-measurement={measurement.id} onClick={(event) => { event.stopPropagation(); onDelete?.(measurement.id); }} style={{ cursor: "pointer" }}><circle cx={deletePoint[0]} cy={deletePoint[1]} r=".14" fill="#fff" stroke="#d84f42" strokeWidth="1.4" vectorEffect="non-scaling-stroke"/><line x1={deletePoint[0] - .05} y1={deletePoint[1] - .05} x2={deletePoint[0] + .05} y2={deletePoint[1] + .05} stroke="#d84f42" strokeWidth="1.8" vectorEffect="non-scaling-stroke"/><line x1={deletePoint[0] + .05} y1={deletePoint[1] - .05} x2={deletePoint[0] - .05} y2={deletePoint[1] + .05} stroke="#d84f42" strokeWidth="1.8" vectorEffect="non-scaling-stroke"/></g>}
+  </g>;
+}
+function SnapIndicator({ snap, active }: { snap: MeasurementSnap; active: boolean }) {
+  const color = snap.kind === "free" ? "#d97706" : "#16a085";
+  return <g pointerEvents="none"><circle cx={snap.point[0]} cy={snap.point[1]} r={active ? ".095" : ".075"} fill="#fff" stroke={color} strokeWidth="1.5" vectorEffect="non-scaling-stroke"/><line x1={snap.point[0] - .05} y1={snap.point[1]} x2={snap.point[0] + .05} y2={snap.point[1]} stroke={color} strokeWidth="1" vectorEffect="non-scaling-stroke"/><line x1={snap.point[0]} y1={snap.point[1] - .05} x2={snap.point[0]} y2={snap.point[1] + .05} stroke={color} strokeWidth="1" vectorEffect="non-scaling-stroke"/></g>;
 }
 function Slab({ node, selected, onSelect }: { node: NodeData; selected: boolean; onSelect: (id: string) => void }) {
   const geometry = buildSlabPlanGeometry(node);
@@ -862,14 +983,19 @@ function Inspector({
   viewBox,
   coverage,
   dimension,
+  manualMeasurement,
+  measurementUnit,
 }: {
   node: NodeData | null;
   nodes: Record<string, NodeData>;
   viewBox: ViewBox;
   coverage: ReturnType<typeof auditSceneCoverage>;
   dimension: DimensionSegment | null;
+  manualMeasurement: ManualMeasurement | null;
+  measurementUnit: MeasurementUnit;
 }) {
-  if (dimension) return <section className="side-section inspector"><h2>外围尺寸</h2><pre>{JSON.stringify({ chainId: dimension.chainId, segmentId: dimension.id, levelId: dimension.levelId, componentId: dimension.componentId, runId: dimension.runId, dimensionLayer: dimension.dimensionLayer, startWorld: dimension.start, endWorld: dimension.end, valueMeters: dimension.valueMeters, displayMillimeters: dimension.displayMillimeters, roundingDifferenceMeters: Number(dimension.displayMillimeters) / 1000 - dimension.valueMeters, direction: dimension.direction, outwardNormal: dimension.outwardNormal, sourceWallIds: dimension.sourceWallIds, sourceOpeningIds: dimension.sourceOpeningIds, sourceStart: dimension.sourceStart, sourceEnd: dimension.sourceEnd, sourcePaths: dimension.sourcePaths, exteriorContourSource: "union of formal physical wall footprints / outer rings only", unionAlgorithm: dimension.unionAlgorithm, geometryMethod: dimension.method, registry: "derived-overlay-feature" }, null, 2)}</pre></section>;
+  if (manualMeasurement) { const geometry = buildManualMeasurementGeometry(manualMeasurement.start.point, manualMeasurement.end.point, manualMeasurement.mode); return <section className="side-section inspector"><h2>手动尺寸</h2><pre>{JSON.stringify({ id: manualMeasurement.id, levelId: manualMeasurement.levelId, mode: manualMeasurement.mode, startWorld: manualMeasurement.start.point, endWorld: manualMeasurement.end.point, startSnap: manualMeasurement.start, endSnap: manualMeasurement.end, valueMeters: geometry.valueMeters, displayedValue: formatMeasurement(geometry.valueMeters, measurementUnit), unit: measurementUnit, geometryMethod: manualMeasurement.mode === "aligned" ? "euclidean-world-distance" : `${manualMeasurement.mode}-world-projection`, persistence: "derived-overlay / current imported project session" }, null, 2)}</pre></section>; }
+  if (dimension) return <section className="side-section inspector"><h2>外围尺寸</h2><pre>{JSON.stringify({ chainId: dimension.chainId, segmentId: dimension.id, levelId: dimension.levelId, componentId: dimension.componentId, runId: dimension.runId, dimensionLayer: dimension.dimensionLayer, startWorld: dimension.start, endWorld: dimension.end, valueMeters: dimension.valueMeters, displayedValue: formatMeasurement(dimension.valueMeters, measurementUnit), displayMillimeters: dimension.displayMillimeters, roundingDifferenceMeters: Number(dimension.displayMillimeters) / 1000 - dimension.valueMeters, direction: dimension.direction, outwardNormal: dimension.outwardNormal, sourceWallIds: dimension.sourceWallIds, sourceOpeningIds: dimension.sourceOpeningIds, sourceStart: dimension.sourceStart, sourceEnd: dimension.sourceEnd, sourcePaths: dimension.sourcePaths, exteriorContourSource: "union of formal physical wall footprints / outer rings only", unionAlgorithm: dimension.unionAlgorithm, geometryMethod: dimension.method, registry: "derived-overlay-feature" }, null, 2)}</pre></section>;
   if (!node)
     return (
       <section className="side-section inspector">
