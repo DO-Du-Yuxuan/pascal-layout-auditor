@@ -126,6 +126,7 @@ function App() {
       });
     }
   };
+  useEffect(() => { load(sampleText, "reference-layout.json"); }, []);
   const updateCanvas = (id: number, update: Partial<CanvasState>) =>
     setCanvases((current) =>
       current.map((canvas) =>
@@ -241,7 +242,7 @@ function App() {
             </div>
             <div className="measurement-toolbar">
               <label>全局单位 <select value={measurementUnit} onChange={(event) => setMeasurementUnit(event.target.value as MeasurementUnit)}><option value="millimeters">公制（mm / m²）</option><option value="feet-inches">英制（ft-in / ft²）</option></select></label>
-              <button className={`measure-toggle ${measurementMode !== "off" ? "active" : ""}`} title="开启后点击两点测量；按住 Shift 锁定水平/垂直；Esc 退出" onClick={() => setMeasurementMode((current) => current === "off" ? "aligned" : "off")}>{measurementMode === "off" ? "测量" : "退出测量"}</button>
+              <button className={`measure-toggle ${measurementMode !== "off" ? "active" : ""}`} title="开启后点击两点测量；按一次 Shift 切换正交；Esc 退出" onClick={() => setMeasurementMode((current) => current === "off" ? "aligned" : "off")}>{measurementMode === "off" ? "测量" : "退出测量"}</button>
               <button className="primary" onClick={addCanvas}>
                 + 添加画布
               </button>
@@ -498,12 +499,11 @@ function Plan({
   useEffect(() => { setMeasurementStart(null); setMeasurementHover(null); setOrthogonalLock(false); }, [measurementMode, levelId]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Shift") setOrthogonalLock(true);
+      if (event.key === "Shift" && !event.repeat) setOrthogonalLock((locked) => !locked);
       if (event.key === "Escape") { setMeasurementStart(null); setMeasurementHover(null); }
       if ((event.key === "Delete" || event.key === "Backspace") && selectedManualId) { event.preventDefault(); onDeleteManual(selectedManualId); }
     };
-    const onKeyUp = (event: KeyboardEvent) => { if (event.key === "Shift") setOrthogonalLock(false); };
-    window.addEventListener("keydown", onKeyDown); window.addEventListener("keyup", onKeyUp); return () => { window.removeEventListener("keydown", onKeyDown); window.removeEventListener("keyup", onKeyUp); };
+    window.addEventListener("keydown", onKeyDown); return () => { window.removeEventListener("keydown", onKeyDown); };
   }, [selectedManualId, onDeleteManual]);
   const eventWorldPoint = (event: { clientX: number; clientY: number }): [number, number] | null => {
     const matrix = sceneRef.current?.getScreenCTM(); if (!matrix) return null;
@@ -533,11 +533,12 @@ function Plan({
         setViewBox(zoomViewBoxAtPoint(viewBox, { x: point.x, z: point.y }, factor));
       }}
       onPointerDown={(e) => {
-        if (e.button !== 0) return;
+        if (measurementMode !== "off" || e.button !== 0 || (e.target as Element).closest("[data-manual-measurement]")) return;
         drag.current = { x: e.clientX, y: e.clientY, box: viewBox, moved: false };
         e.currentTarget.setPointerCapture?.(e.pointerId);
       }}
       onPointerMove={(e) => {
+        if (measurementMode !== "off") return;
         if (!drag.current) return;
         const screenDx = e.clientX - drag.current.x, screenDz = e.clientY - drag.current.y;
         if (!drag.current.moved && Math.hypot(screenDx, screenDz) < 3) return;
@@ -556,6 +557,7 @@ function Plan({
         });
       }}
       onPointerUp={(e) => {
+        if (!drag.current) return;
         if (drag.current?.moved) {
           suppressClick.current = true;
           window.setTimeout(() => { suppressClick.current = false; }, 0);
@@ -571,11 +573,14 @@ function Plan({
         onContextMenu={(event) => { if (measurementMode !== "off") { event.preventDefault(); setMeasurementStart(null); setMeasurementHover(null); } }}
         onClickCapture={(event) => {
           if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); suppressClick.current = false; return; }
-          if (measurementMode === "off") return;
           const target = event.target as Element, deleteId = target.closest("[data-delete-measurement]")?.getAttribute("data-delete-measurement"), measurementId = target.closest("[data-manual-measurement]")?.getAttribute("data-manual-measurement");
+          if (deleteId || measurementId) {
+            event.preventDefault(); event.stopPropagation();
+            if (deleteId) onDeleteManual(deleteId); else if (measurementId) onSelectManual(measurementId);
+            return;
+          }
+          if (measurementMode === "off") return;
           event.preventDefault(); event.stopPropagation();
-          if (deleteId) { onDeleteManual(deleteId); return; }
-          if (measurementId) { onSelectManual(measurementId); return; }
           const snap = snapAtEvent(event); if (snap) commitMeasurementPoint(snap);
         }}
         onClick={(event) => { if (!(event.target as Element).closest("[data-selectable]")) { onSelect(null); onSelectManual(null); } }}>
@@ -652,7 +657,7 @@ function Plan({
           {measurementMode !== "off" && measurementHover && <SnapIndicator snap={measurementHover} active={Boolean(measurementStart)} />}
         </g>
       </svg>
-      {measurementMode !== "off" && <div className="measure-hint">{measurementStart ? `${orthogonalLock ? activeMeasurementMode === "horizontal" ? "水平正交" : "垂直正交" : "自由对齐"} · 点击第二点 · Shift 正交 · Esc 退出` : "点击第一点 · 按住 Shift 正交 · Esc 退出"}</div>}
+      {measurementMode !== "off" && <div className="measure-hint">{measurementStart ? `${orthogonalLock ? activeMeasurementMode === "horizontal" ? "水平正交已开启" : "垂直正交已开启" : "自由对齐"} · 点击第二点 · Shift 切换正交 · Esc 退出` : `${orthogonalLock ? "正交已开启" : "正交已关闭"} · 点击第一点 · Shift 切换正交 · Esc 退出`}</div>}
       <Compass rotation={rotation} />
       <div className="legend">{formatPanelLength(viewBox.width, measurementUnit)} × {formatPanelLength(viewBox.height, measurementUnit)}</div>
     </div>
