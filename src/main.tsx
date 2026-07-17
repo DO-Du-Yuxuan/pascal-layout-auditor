@@ -673,7 +673,7 @@ function Opening({
       const radius = Math.abs(closedVectorX), closedTipX = hingeX + closedVectorX,
         openTipX = hingeX, openTipY = closedVectorX * Math.sin(signedQuarterTurn),
         sweepFlag = signedQuarterTurn >= 0 ? 1 : 0;
-      return <React.Fragment key={key}><line x1={hingeX} y1="0" x2={openTipX} y2={openTipY} stroke={color} strokeWidth={selected ? ".035" : ".025"} vectorEffect="non-scaling-stroke"/><path d={`M ${closedTipX} 0 A ${radius} ${radius} 0 0 ${sweepFlag} ${openTipX} ${openTipY}`} fill="none" stroke={color} strokeWidth={selected ? ".026" : ".018"} strokeDasharray=".08 .06" strokeLinecap="round" vectorEffect="non-scaling-stroke"/></React.Fragment>;
+      return <React.Fragment key={key}><line x1={hingeX} y1="0" x2={openTipX} y2={openTipY} stroke={color} strokeWidth={selected ? "2.4" : "1.7"} vectorEffect="non-scaling-stroke"/><path d={`M ${closedTipX} 0 A ${radius} ${radius} 0 0 ${sweepFlag} ${openTipX} ${openTipY}`} fill="none" stroke={color} strokeWidth={selected ? "1.6" : "1.1"} strokeDasharray="5 4" strokeLinecap="round" vectorEffect="non-scaling-stroke"/></React.Fragment>;
     };
     return (
       <g
