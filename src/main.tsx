@@ -525,6 +525,7 @@ function Plan({
   return (
     <div
       className={`plan ${measurementMode !== "off" ? "measuring" : ""}`}
+      style={{ userSelect: "none", WebkitUserSelect: "none" }}
       onWheel={(e) => {
         e.preventDefault();
         const factor = e.deltaY < 0 ? 0.9 : 1.1;
@@ -534,16 +535,18 @@ function Plan({
         setViewBox(zoomViewBoxAtPoint(viewBox, { x: point.x, z: point.y }, factor));
       }}
       onPointerDown={(e) => {
-        if (measurementMode !== "off" || e.button !== 0 || (e.target as Element).closest("[data-selectable]")) return;
+        if (measurementMode !== "off" || e.button !== 0) return;
         drag.current = { x: e.clientX, y: e.clientY, box: viewBox, moved: false };
-        e.currentTarget.setPointerCapture?.(e.pointerId);
       }}
       onPointerMove={(e) => {
         if (measurementMode !== "off") return;
         if (!drag.current) return;
         const screenDx = e.clientX - drag.current.x, screenDz = e.clientY - drag.current.y;
         if (!drag.current.moved && Math.hypot(screenDx, screenDz) < 3) return;
-        drag.current.moved = true;
+        if (!drag.current.moved) {
+          drag.current.moved = true;
+          e.currentTarget.setPointerCapture?.(e.pointerId);
+        }
         const dx =
             (screenDx * drag.current.box.width) /
             (e.currentTarget.clientWidth || 1),
@@ -564,7 +567,7 @@ function Plan({
           window.setTimeout(() => { suppressClick.current = false; }, 0);
         }
         drag.current = null;
-        e.currentTarget.releasePointerCapture?.(e.pointerId);
+        if (e.currentTarget.hasPointerCapture?.(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
       }}
       onPointerCancel={() => { drag.current = null; }}
     >
