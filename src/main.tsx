@@ -24,7 +24,7 @@ import { buildSlabPlanGeometry } from "./geometry/slab";
 import { buildCurvedStairPlanGeometry, buildStraightStairPlanGeometry, stairCorners } from "./geometry/stairs";
 import { zoneColor, zoneLabelPoint, zonePoints } from "./geometry/zone";
 import { buildAlignedDimensionDisplay, buildExteriorDimensions, DimensionSegment, dimensionDisplayGeometry, dimensionOverlayBounds, EXTENSION_OVERSHOOT_M, INNER_CHAIN_OFFSET_M, OVERALL_CHAIN_OFFSET_M, uprightDimensionAngle } from "./geometry/exterior-dimensions";
-import { buildManualMeasurementGeometry, buildMeasurementSnapSegments, formatMeasurement, ManualMeasurement, MeasurementMode, MeasurementSnap, MeasurementUnit, snapMeasurementPoint } from "./geometry/manual-measurement";
+import { buildManualMeasurementGeometry, buildMeasurementSnapSegments, formatMeasurement, ManualMeasurement, MeasurementMode, MeasurementSnap, MeasurementUnit, resolveMeasurementMode, snapMeasurementPoint } from "./geometry/manual-measurement";
 import { auditSceneCoverage } from "./coverage/auditSceneCoverage";
 
 type Visibility = {
@@ -80,6 +80,7 @@ function App() {
   const input = useRef<HTMLInputElement>(null), nextMeasurementId = useRef(1);
   const nodes = data?.nodes || {};
   const levels = Object.values(nodes).filter((n) => n.type === "level");
+  useEffect(() => { const closeMeasurement = (event: KeyboardEvent) => { if (event.key === "Escape") setMeasurementMode("off"); }; window.addEventListener("keydown", closeMeasurement); return () => window.removeEventListener("keydown", closeMeasurement); }, []);
   const load = (text: string, name: string) => {
     try {
       const parsed = parseProject(JSON.parse(text));
@@ -236,9 +237,7 @@ function App() {
             </div>
             <div className="measurement-toolbar">
               <label>单位 <select value={measurementUnit} onChange={(event) => setMeasurementUnit(event.target.value as MeasurementUnit)}><option value="millimeters">毫米</option><option value="feet-inches">英尺–英寸</option></select></label>
-              <div className="measure-modes" aria-label="手动测量模式">
-                {([['off','关闭'],['aligned','对齐'],['horizontal','水平'],['vertical','垂直']] as const).map(([mode, label]) => <button key={mode} className={measurementMode === mode ? "active" : ""} onClick={() => setMeasurementMode(mode)}>{label}</button>)}
-              </div>
+              <button className={`measure-toggle ${measurementMode !== "off" ? "active" : ""}`} title="开启后点击两点测量；按住 Shift 锁定水平/垂直；Esc 退出" onClick={() => setMeasurementMode((current) => current === "off" ? "aligned" : "off")}>{measurementMode === "off" ? "测量" : "退出测量"}</button>
               <button className="primary" onClick={addCanvas}>
                 + 添加画布
               </button>
@@ -493,6 +492,7 @@ function Plan({
   const drag = useRef<{ x: number; y: number; box: ViewBox } | null>(null), svgRef = useRef<SVGSVGElement>(null), sceneRef = useRef<SVGGElement>(null),
     [measurementStart, setMeasurementStart] = useState<MeasurementSnap | null>(null),
     [measurementHover, setMeasurementHover] = useState<MeasurementSnap | null>(null),
+    [orthogonalLock, setOrthogonalLock] = useState(false),
     rendered = objectsOnLevel(nodes, levelId),
     items = rendered.filter((n) => n.type === "item"),
     zones = rendered.filter((n) => n.type === "zone"),
@@ -507,13 +507,16 @@ function Plan({
     cz = viewBox.minZ + viewBox.height / 2,
     vb = `${viewBox.minX} ${viewBox.minZ} ${viewBox.width} ${viewBox.height}`;
   const snapSegments = useMemo(() => buildMeasurementSnapSegments(nodes, levelId), [nodes, levelId]);
-  useEffect(() => { setMeasurementStart(null); setMeasurementHover(null); }, [measurementMode, levelId]);
+  const activeMeasurementMode = resolveMeasurementMode(measurementStart?.point ?? null, measurementHover?.point ?? null, orthogonalLock);
+  useEffect(() => { setMeasurementStart(null); setMeasurementHover(null); setOrthogonalLock(false); }, [measurementMode, levelId]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Shift") setOrthogonalLock(true);
       if (event.key === "Escape") { setMeasurementStart(null); setMeasurementHover(null); }
       if ((event.key === "Delete" || event.key === "Backspace") && selectedManualId) { event.preventDefault(); onDeleteManual(selectedManualId); }
     };
-    window.addEventListener("keydown", onKeyDown); return () => window.removeEventListener("keydown", onKeyDown);
+    const onKeyUp = (event: KeyboardEvent) => { if (event.key === "Shift") setOrthogonalLock(false); };
+    window.addEventListener("keydown", onKeyDown); window.addEventListener("keyup", onKeyUp); return () => { window.removeEventListener("keydown", onKeyDown); window.removeEventListener("keyup", onKeyUp); };
   }, [selectedManualId, onDeleteManual]);
   const eventWorldPoint = (event: { clientX: number; clientY: number }): [number, number] | null => {
     const matrix = sceneRef.current?.getScreenCTM(); if (!matrix) return null;
@@ -527,8 +530,8 @@ function Plan({
   const commitMeasurementPoint = (snap: MeasurementSnap) => {
     if (!measurementStart) { setMeasurementStart(snap); setMeasurementHover(snap); return; }
     if (measurementMode === "off") return;
-    const geometry = buildManualMeasurementGeometry(measurementStart.point, snap.point, measurementMode);
-    if (geometry.valueMeters > .0005) onCreateMeasurement({ levelId, mode: measurementMode, start: measurementStart, end: snap });
+    const mode = resolveMeasurementMode(measurementStart.point, snap.point, orthogonalLock), geometry = buildManualMeasurementGeometry(measurementStart.point, snap.point, mode);
+    if (geometry.valueMeters > .0005) onCreateMeasurement({ levelId, mode, start: measurementStart, end: snap });
     setMeasurementStart(null); setMeasurementHover(null);
   };
   return (
@@ -645,11 +648,11 @@ function Plan({
           ))}
           {visibility.zones && zones.map((n) => <ZoneLabel key={`zone-label-${n.id}`} node={n} />)}
           {visibility.dimensions && <ExteriorDimensions report={exteriorDimensions} viewRotation={rotation} unit={measurementUnit} onSelect={onSelectDimension} />}
-          <ManualMeasurements measurements={manualMeasurements} preview={measurementMode !== "off" && measurementStart && measurementHover ? { mode: measurementMode, start: measurementStart, end: measurementHover } : null} unit={measurementUnit} viewRotation={rotation} selectedId={selectedManualId} onSelect={onSelectManual} onDelete={onDeleteManual} />
+          <ManualMeasurements measurements={manualMeasurements} preview={measurementMode !== "off" && measurementStart && measurementHover ? { mode: activeMeasurementMode, start: measurementStart, end: measurementHover } : null} unit={measurementUnit} viewRotation={rotation} selectedId={selectedManualId} onSelect={onSelectManual} onDelete={onDeleteManual} />
           {measurementMode !== "off" && measurementHover && <SnapIndicator snap={measurementHover} active={Boolean(measurementStart)} />}
         </g>
       </svg>
-      {measurementMode !== "off" && <div className="measure-hint">{measurementStart ? "移动鼠标并点击第二点 · Esc/右键取消" : `${measurementMode === "aligned" ? "对齐" : measurementMode === "horizontal" ? "水平" : "垂直"}测量：点击第一点`}</div>}
+      {measurementMode !== "off" && <div className="measure-hint">{measurementStart ? `${orthogonalLock ? activeMeasurementMode === "horizontal" ? "水平正交" : "垂直正交" : "自由对齐"} · 点击第二点 · Shift 正交 · Esc 退出` : "点击第一点 · 按住 Shift 正交 · Esc 退出"}</div>}
       <Compass rotation={rotation} />
       <div className="legend">{vb} m</div>
     </div>

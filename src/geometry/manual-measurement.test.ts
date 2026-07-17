@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildManualMeasurementGeometry, buildMeasurementSnapSegments, formatMeasurement, snapMeasurementPoint } from "./manual-measurement";
+import { buildManualMeasurementGeometry, buildMeasurementSnapSegments, formatMeasurement, resolveMeasurementMode, snapMeasurementPoint } from "./manual-measurement";
 
 const level = { id: "level", type: "level" }, wall = { id: "wall", type: "wall", parentId: "level", start: [0, 0], end: [4, 0], thickness: .2 }, item = { id: "item", type: "item", parentId: "level", position: [2, 0, 2], rotation: [0, Math.PI / 2, 0], asset: { dimensions: [2, 1, 1] } };
 
@@ -13,6 +13,11 @@ describe("manual CAD measurement", () => {
     expect(buildManualMeasurementGeometry([0, 0], [3, 4], "aligned").valueMeters).toBe(5);
     expect(buildManualMeasurementGeometry([0, 0], [3, 4], "horizontal")).toMatchObject({ valueMeters: 3, measurementEnd: [3, 0] });
     expect(buildManualMeasurementGeometry([0, 0], [3, 4], "vertical")).toMatchObject({ valueMeters: 4, measurementEnd: [0, 4] });
+  });
+  it("uses Shift-style orthogonal locking on the dominant world axis", () => {
+    expect(resolveMeasurementMode([0, 0], [4, 2], true)).toBe("horizontal");
+    expect(resolveMeasurementMode([0, 0], [2, 4], true)).toBe("vertical");
+    expect(resolveMeasurementMode([0, 0], [2, 4], false)).toBe("aligned");
   });
   it("snaps to the physical wall face rather than its centerline", () => {
     const segments = buildMeasurementSnapSegments({ level, wall } as any, "level"), snap = snapMeasurementPoint([2, -.08], segments, .05);

@@ -69,3 +69,8 @@ export function buildManualMeasurementGeometry(start: MeasurementPoint, end: Mea
   const vector: MeasurementPoint = [measurementEnd[0] - start[0], measurementEnd[1] - start[1]], valueMeters = Math.hypot(vector[0], vector[1]), direction = normalize(vector), normal: MeasurementPoint = [-direction[1], direction[0]], labelPoint: MeasurementPoint = [(start[0] + measurementEnd[0]) / 2, (start[1] + measurementEnd[1]) / 2];
   return { measurementStart: start, measurementEnd, extensionLines, valueMeters, direction, normal, labelPoint };
 }
+
+export function resolveMeasurementMode(start: MeasurementPoint | null, end: MeasurementPoint | null, orthogonal: boolean): Exclude<MeasurementMode, "off"> {
+  if (!orthogonal || !start || !end) return "aligned";
+  return Math.abs(end[0] - start[0]) >= Math.abs(end[1] - start[1]) ? "horizontal" : "vertical";
+}
