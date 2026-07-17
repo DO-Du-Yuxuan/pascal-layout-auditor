@@ -126,7 +126,7 @@ function App() {
         ? current.filter((canvas) => canvas.id !== id)
         : current,
     );
-  const coverage = useMemo(() => auditSceneCoverage(nodes), [nodes]), diagnostics = useMemo(
+  const coverage = useMemo(() => auditSceneCoverage(nodes, Array.isArray(data?.raw?.installedPlugins) ? data.raw.installedPlugins : []), [nodes, data]), diagnostics = useMemo(
     () => (data ? [...data.diagnostics, ...transformDiagnostics(nodes), ...coverage.diagnostics] : []),
     [data, nodes],
   );
@@ -920,5 +920,34 @@ function Diagnostics({ diagnostics }: { diagnostics: Diagnostic[] }) {
     </section>
   );
 }
-function CoverageReport({coverage}:{coverage:ReturnType<typeof auditSceneCoverage>}){return <section className="side-section diagnostics-panel"><div className="side-heading"><h2>解析覆盖</h2><span className="pill">{Object.keys(coverage.byKind).length}</span></div><small>Core {coverage.summary.builtInNodes} · 未知 {coverage.summary.unknownPluginNodes} · 未渲染 {coverage.summary.parsedNotRenderedNodes}</small>{Object.entries(coverage.byKind).map(([kind,entries])=><details key={kind}><summary>{kind} · {entries.length} · {entries[0].overallStatus}</summary><pre>{JSON.stringify(entries.map(e=>({id:e.nodeId,variant:e.variant,status:e.overallStatus,reason:e.reason,ancestorLevelId:e.ancestorLevelId})),null,2)}</pre></details>)}</section>}
+function CoverageReport({
+  coverage,
+}: {
+  coverage: ReturnType<typeof auditSceneCoverage>;
+}) {
+  return (
+    <section className="side-section diagnostics-panel">
+      <div className="side-heading">
+        <h2>解析覆盖</h2>
+        <span className="pill">{Object.keys(coverage.byKind).length}</span>
+      </div>
+      <small>
+        Core {coverage.summary.builtInNodes} · 完整 {coverage.summary.fullySupportedNodes} ·
+        部分 {coverage.summary.partiallySupportedNodes} · 未知 {coverage.summary.unknownPluginNodes} ·
+        未渲染 {coverage.summary.parsedNotRenderedNodes} · 无效 {coverage.summary.invalidNodes}
+      </small>
+      {Object.entries(coverage.byKind).map(([kind, entries]) => (
+        <details key={kind}>
+          <summary>{kind} · {entries.length} · {entries[0].overallStatus}</summary>
+          <table className="coverage-table">
+            <thead><tr><th>Variant</th><th>解析</th><th>坐标</th><th>预计</th><th>实际</th><th>状态</th></tr></thead>
+            <tbody>{entries.map((entry) => <tr key={entry.nodeId}><td>{entry.variant || "—"}</td><td>{entry.schemaStatus}</td><td>{entry.transformStatus}</td><td>{entry.expectedVisibility.join(", ")}</td><td>{entry.actualRenderStatus}</td><td>{entry.overallStatus}</td></tr>)}</tbody>
+          </table>
+          <pre>{JSON.stringify(entries.map((entry) => ({ nodeId: entry.nodeId, variant: entry.variant, parentChain: entry.parentChain, sourcePath: entry.sourcePath, evidence: entry.evidence, reason: entry.reason })), null, 2)}</pre>
+        </details>
+      ))}
+      {coverage.unknownKinds.length > 0 && <pre>{JSON.stringify({ unknownKinds: coverage.unknownKinds, installedPlugins: coverage.installedPlugins }, null, 2)}</pre>}
+    </section>
+  );
+}
 createRoot(document.getElementById("root")!).render(<App />);

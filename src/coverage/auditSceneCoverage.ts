@@ -1,5 +1,215 @@
-import { NodeData } from '../types';
-import { resolveAncestorLevelId } from '../geometry/transform';
-import { BUILTIN_KINDS, pascalCoreManifest } from './pascalCoreManifest';
-const exact=new Set(['item','wall','shelf','zone','door','window']);const containers=new Set(['site','building','level']);const parentEmitted=new Set(['stair-segment','cabinet-module']);
-export function auditSceneCoverage(nodes:Record<string,NodeData>){const builtin=new Set<string>(BUILTIN_KINDS);const entries=Object.values(nodes).map(node=>{const variant=node.type==='stair'?node.stairType:node.type==='door'?node.doorType:node.type==='window'?node.windowType:node.type==='shelf'?node.style:undefined;const ancestor=resolveAncestorLevelId(node.id,nodes);let overallStatus='parsed-not-rendered',reason='当前 Demo 没有该节点的平面渲染器';if(!builtin.has(node.type)){overallStatus='unknown-plugin-node';reason='不属于固定 Pascal Core 43-kind manifest';}else if(containers.has(node.type)){overallStatus='parsed-container';reason='场景层级容器正常不独立绘制';}else if(parentEmitted.has(node.type)){overallStatus='parsed-parent-emitted';reason='由父节点统一输出几何';}else if(exact.has(node.type)||(node.type==='stair'&&variant==='spiral')){overallStatus='supported-exact';reason='存在当前渲染分支与回归证据';}else if(node.type==='stair')reason=`stair.${variant??'unknown'} 已解析但本阶段未实现`;return{nodeId:node.id,kind:node.type,variant,ancestorLevelId:ancestor.levelId,schemaStatus:'complete',transformStatus:ancestor.error?'none':'partial',expectedVisibility:pascalCoreManifest.find(m=>m.kind===node.type)?.classification.expectedVisibilityStrategy??'unknown',actualRenderStatus:overallStatus.startsWith('supported')?'rendered':'not-rendered',overallStatus,reason,evidence:{files:['src/main.tsx'],functions:[],tests:[]}}});const count=(s:string)=>entries.filter(e=>e.overallStatus===s).length,byKind=entries.reduce<Record<string,typeof entries>>((a,e)=>{(a[e.kind]??=[]).push(e);return a;},{});const flagged=entries.filter(e=>e.overallStatus==='parsed-not-rendered'||e.overallStatus==='unknown-plugin-node');return{summary:{totalNodes:entries.length,builtInNodes:entries.filter(e=>builtin.has(e.kind)).length,unknownPluginNodes:count('unknown-plugin-node'),fullySupportedNodes:count('supported-exact'),partiallySupportedNodes:0,parsedNotRenderedNodes:count('parsed-not-rendered'),invalidNodes:0},entries,byKind,missingRenderers:entries.filter(e=>e.overallStatus==='parsed-not-rendered'),unknownKinds:entries.filter(e=>e.overallStatus==='unknown-plugin-node'),diagnostics:flagged.map(e=>({severity:e.overallStatus==='parsed-not-rendered'?'error':'warning',code:e.overallStatus,message:e.reason,nodeId:e.nodeId,sourcePath:`nodes.${e.nodeId}.type`}))};}
+import { Diagnostic, NodeData } from "../types";
+import { resolveAncestorLevelId } from "../geometry/transform";
+import { finalDimensions } from "../geometry/transform";
+import { hasValidShelfFootprint } from "../geometry/shelf";
+import { buildSpiralStairPlanGeometry } from "../geometry/spiral-stair";
+import { OverallStatus } from "./coverageTypes";
+import { currentVariantSupport } from "./currentDemoMatrix";
+import { BUILTIN_KINDS, pascalCoreManifest } from "./pascalCoreManifest";
+import { collectCurrentRenderRegistry } from "./renderedNodeRegistry";
+
+const variantOf = (node: NodeData) =>
+  node.type === "stair"
+    ? node.stairType
+    : node.type === "door"
+      ? (node.doorType ?? "hinged")
+      : node.type === "window"
+        ? (node.windowType ?? "fixed")
+        : node.type === "shelf"
+          ? (node.style ?? "wall-shelf")
+          : undefined;
+
+const invalidReason = (node: NodeData) => {
+  if (node.type === "item" && !finalDimensions(node))
+    return "item dimensions/scale 无效";
+  if (node.type === "shelf" && !hasValidShelfFootprint(node))
+    return "shelf dimensions 无效";
+  if (node.type === "wall") {
+    if (!Array.isArray(node.start) || !Array.isArray(node.end))
+      return "wall endpoints 缺失";
+    if (
+      Math.hypot(node.end[0] - node.start[0], node.end[1] - node.start[1]) <
+      1e-9
+    )
+      return "wall 长度为零";
+  }
+  if (
+    node.type === "stair" &&
+    node.stairType === "spiral" &&
+    !buildSpiralStairPlanGeometry(node)
+  )
+    return "spiral stair 关键几何无效";
+  if (
+    (node.type === "door" || node.type === "window") &&
+    node.width !== undefined &&
+    (!Number.isFinite(node.width) || node.width <= 0)
+  )
+    return `${node.type} width 无效`;
+  return undefined;
+};
+
+export function auditSceneCoverage(
+  nodes: Record<string, NodeData>,
+  installedPlugins: unknown[] = [],
+) {
+  const builtin = new Set<string>(BUILTIN_KINDS),
+    registry = collectCurrentRenderRegistry(nodes);
+  const entries = Object.values(nodes).map((node) => {
+    const manifest = pascalCoreManifest.find(
+        (entry) => entry.kind === node.type,
+      ),
+      variant = variantOf(node),
+      ancestor = resolveAncestorLevelId(node.id, nodes),
+      render = registry.get(node.id),
+      invalid = invalidReason(node);
+    let overallStatus: OverallStatus, reason: string;
+    if (!manifest) {
+      overallStatus = "unknown-plugin-node";
+      reason = "不属于固定 Pascal Core 43-kind；缺少对应插件 Schema";
+    } else if (invalid) {
+      overallStatus = "invalid-data";
+      reason = invalid;
+    } else if (render?.renderStrategy === "intentionally-hidden") {
+      overallStatus =
+        manifest.classification.expectedVisibilityStrategy.includes("container")
+          ? "parsed-container"
+          : "parsed-intentionally-hidden";
+      reason = "按当前视图策略正常不独立绘制";
+    } else if (render?.renderStrategy === "parent-emitted") {
+      overallStatus = "parsed-parent-emitted";
+      reason = `由父节点 ${render.emittedByNodeId} 输出`;
+    } else if (render) {
+      const configured =
+        variant && node.type in currentVariantSupport
+          ? (currentVariantSupport as any)[node.type]?.[variant]
+          : undefined;
+      overallStatus = (configured ??
+        manifest.currentDemoStatus.overallStatus) as OverallStatus;
+      reason = `实际登记为 ${render.renderStrategy} 渲染`;
+    } else if (
+      manifest.classification.expectedVisibilityStrategy.includes("container")
+    ) {
+      overallStatus = "parsed-container";
+      reason = "容器节点正常不独立绘制";
+    } else if (
+      manifest.classification.expectedVisibilityStrategy.includes(
+        "parent-emitted",
+      )
+    ) {
+      overallStatus = "parsed-not-rendered";
+      reason = "期望由父节点输出，但当前没有父级渲染登记";
+    } else {
+      overallStatus =
+        variant && node.type in currentVariantSupport
+          ? ((currentVariantSupport as any)[node.type]?.[variant] ??
+            "parsed-not-rendered")
+          : "parsed-not-rendered";
+      reason =
+        overallStatus === "partially-supported"
+          ? "当前 variant 仅有简化表达且本节点未满足渲染条件"
+          : `${node.type}${variant ? "." + variant : ""} 已解析但没有实际渲染登记`;
+    }
+    return {
+      nodeId: node.id,
+      kind: node.type,
+      variant,
+      ancestorLevelId: ancestor.levelId,
+      parentChain: ancestor.sourceNodeIds,
+      sourcePath: `nodes.${node.id}`,
+      schemaStatus: manifest?.currentDemoStatus.schemaRecognition ?? "none",
+      transformStatus: ancestor.error
+        ? "none"
+        : (manifest?.currentDemoStatus.transformResolution ?? "none"),
+      expectedVisibility: manifest?.classification
+        .expectedVisibilityStrategy ?? ["unknown-plugin"],
+      actualRenderStatus: render?.renderStrategy ?? "none",
+      overallStatus,
+      reason,
+      evidence: manifest?.currentDemoStatus.evidence ?? {
+        files: [],
+        functions: [],
+        tests: [],
+      },
+    };
+  });
+  const count = (...statuses: OverallStatus[]) =>
+    entries.filter((entry) => statuses.includes(entry.overallStatus)).length;
+  const byKind = entries.reduce<Record<string, typeof entries>>(
+    (groups, entry) => {
+      (groups[entry.kind] ??= []).push(entry);
+      return groups;
+    },
+    {},
+  );
+  const byVariant = entries.reduce<Record<string, number>>((groups, entry) => {
+    const key = `${entry.kind}.${entry.variant ?? "(none)"}`;
+    groups[key] = (groups[key] ?? 0) + 1;
+    return groups;
+  }, {});
+  const diagnostics = entries.reduce<Diagnostic[]>((result, entry) => {
+    if (entry.overallStatus === "parsed-not-rendered")
+      result.push({
+        severity: "error",
+        code: "parsed-not-rendered",
+        message: entry.reason,
+        nodeId: entry.nodeId,
+        sourcePath: entry.sourcePath,
+      });
+    else if (entry.overallStatus === "invalid-data")
+      result.push({
+        severity: "error",
+        code: "invalid-data",
+        message: entry.reason,
+        nodeId: entry.nodeId,
+        sourcePath: entry.sourcePath,
+      });
+    else if (entry.overallStatus === "partially-supported")
+      result.push({
+        severity: "warning",
+        code: "partially-supported",
+        message: entry.reason,
+        nodeId: entry.nodeId,
+        sourcePath: entry.sourcePath,
+      });
+    else if (entry.overallStatus === "unknown-plugin-node")
+      result.push({
+        severity: "warning",
+        code: "unknown-plugin-node",
+        message: `${entry.reason}; installedPlugins=${JSON.stringify(installedPlugins)}`,
+        nodeId: entry.nodeId,
+        sourcePath: entry.sourcePath,
+      });
+    return result;
+  }, []);
+  return {
+    summary: {
+      totalNodes: entries.length,
+      builtInNodes: entries.filter((entry) => builtin.has(entry.kind)).length,
+      unknownPluginNodes: count("unknown-plugin-node"),
+      fullySupportedNodes: count(
+        "supported-exact",
+        "supported-pascal-equivalent",
+        "supported-demo-symbol",
+      ),
+      partiallySupportedNodes: count("partially-supported"),
+      parsedNotRenderedNodes: count("parsed-not-rendered"),
+      invalidNodes: count("invalid-data"),
+    },
+    entries,
+    byKind,
+    byVariant,
+    missingRenderers: entries.filter(
+      (entry) => entry.overallStatus === "parsed-not-rendered",
+    ),
+    unknownKinds: [
+      ...new Set(
+        entries
+          .filter((entry) => entry.overallStatus === "unknown-plugin-node")
+          .map((entry) => entry.kind),
+      ),
+    ],
+    installedPlugins,
+    renderedRegistry: registry.all(),
+    diagnostics,
+  };
+}
