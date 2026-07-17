@@ -28,7 +28,7 @@ Status columns: `P` parse recognition, `R` raw preservation, `T` transform, `F` 
 | guide | `schema/nodes/guide.ts` / `guide/definition.ts` | scale reference | helper-view-specific | partial | complete | n/a | intentionally hidden | partial/partial/none | optional guide mode |
 | spawn | `schema/nodes/spawn.ts` / `spawn/definition.ts` FP | rotation | helper-view-specific, symbol-only | partial | complete | n/a | intentionally hidden | partial/partial/none | optional helper layer |
 | window | `schema/nodes/window.ts` / `window/definition.ts` FP | 10 window types | hosted | partial | complete | partial | demo custom symbol | partial/partial/none | variant-specific Pascal symbols |
-| door | `schema/nodes/door.ts` / `door/definition.ts` FP | hinged, double, french, folding, pocket, barn, sliding, 3 garage types; openingKind | hosted | partial | complete | complete | Pascal-style symbol only | complete/complete/complete | wall cutout deliberately disabled to protect accepted wall geometry |
+| door | `schema/nodes/door.ts` / `door/definition.ts` FP | 10 door types; category; track | hosted | partial | complete | partial | demo custom symbol | partial/partial/none | variant/opening Pascal symbols |
 | box-vent | `schema/nodes/box-vent.ts` / `box-vent/definition.ts` FP | box, cap, dome | hosted | partial | complete | none | none | partial/partial/none | roof-segment host frame |
 | ridge-vent | `schema/nodes/ridge-vent.ts` / `ridge-vent/definition.ts` FP | standard, shingled, metal | hosted | partial | complete | none | none | partial/partial/none | ridge host geometry |
 | turbine-vent | `schema/nodes/turbine-vent.ts` / `turbine-vent/definition.ts` FP | globe, cylinder | hosted | partial | complete | none | none | partial/partial/none | roof host frame |
@@ -52,16 +52,6 @@ Status columns: `P` parse recognition, `R` raw preservation, `T` transform, `F` 
 
 ## Evidence and invariants
 
-### Door implementation evidence
-
-Door support is pinned to `pascalorg/editor@22c9472066398dae668b45e65c4785a56b3d0fb8`:
-`packages/core/src/schema/nodes/door.ts`, `packages/nodes/src/door/definition.ts`,
-`packages/nodes/src/door/floorplan.ts`, and
-`packages/nodes/src/shared/opening-placement-dimensions.ts`. Local equivalents are
-`resolveDoorPlanGeometry()` and `Door` in `src/geometry/door.ts` / `src/main.tsx`.
-The latter preserves the upstream fixed 90° architectural swing arc; it does not
-use the live 3D `operationState` as a plan-symbol angle.
-
 - Raw preservation is complete because `nodeSchema.passthrough()` and `parseProject()` copy every recognized object field; unknown plugin nodes are retained rather than rejected.
 - No kind has `schemaRecognition: complete`: this Demo does not import Pascal's fixed-commit `AnyNode` Zod union.
 - `complete` transform/test claims carry direct file/function/test evidence in the machine manifest; slab and stair coverage is exercised by dedicated geometry tests.
@@ -69,7 +59,7 @@ use the live 3D `operationState` as a plan-symbol angle.
 
 ## Recommended implementation batches
 
-1. Common interior plan objects: window variants, column, cabinet/module, fence, elevator.
+1. Common interior plan objects: curved stair, straight stair + stair-segment parent emitter, door/window variants, column, cabinet/module, slab, ceiling, fence, elevator.
 2. Roof graph and hosted accessories: roof/segment first, then skylight, dormer, chimney, gutter/downspout, solar panel, vents and cupola.
 3. MEP: duct segment/fitting/terminal and HVAC equipment, then lineset/liquid line, then pipe segment/fitting/trap.
 4. Optional editor layers: scan, guide and spawn.

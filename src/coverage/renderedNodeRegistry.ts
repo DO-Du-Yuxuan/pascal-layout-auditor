@@ -10,7 +10,6 @@ import {
 } from "../geometry/shelf";
 import { buildSlabPlanGeometry } from "../geometry/slab";
 import { hasStairPlanGeometry } from "../geometry/stairs";
-import { resolveDoorPlanGeometry } from "../geometry/door";
 export type RenderStrategy = "self" | "parent-emitted" | "intentionally-hidden" | "hidden-by-layer-toggle";
 export type RenderRecord = {
   nodeId: string;
@@ -18,8 +17,6 @@ export type RenderRecord = {
   variant?: string;
   emittedByNodeId?: string;
   renderStrategy: RenderStrategy;
-  physicalOpeningRendered?: boolean;
-  symbolRendered?: boolean;
 };
 export class RenderedNodeRegistry {
   private records = new Map<string, RenderRecord>();
@@ -37,14 +34,14 @@ const variant = (node: NodeData) =>
   node.type === "stair"
     ? node.stairType
     : node.type === "door"
-      ? (node.openingKind === "opening" ? "opening" : node.doorType)
+      ? node.doorType
       : node.type === "window"
         ? node.windowType
         : node.type === "shelf"
           ? node.style
           : undefined;
 /** Mirrors current Plan dispatch conditions; it does not build or alter SVG geometry. */
-export function collectCurrentRenderRegistry(nodes: Record<string, NodeData>, visibility: { slabs?: boolean; stairs?: boolean; openings?: boolean } = {}) {
+export function collectCurrentRenderRegistry(nodes: Record<string, NodeData>, visibility: { slabs?: boolean; stairs?: boolean } = {}) {
   const registry = new RenderedNodeRegistry();
   for (const node of Object.values(nodes)) {
     if (
@@ -105,16 +102,10 @@ export function collectCurrentRenderRegistry(nodes: Record<string, NodeData>, vi
         variant: variant(node),
         renderStrategy: "self",
       });
-    else if (node.type === "door" && resolveDoorPlanGeometry(node, nodes))
-      registry.register({
-        nodeId: node.id,
-        kind: node.type,
-        variant: variant(node),
-        renderStrategy: "self",
-        physicalOpeningRendered: false,
-        symbolRendered: visibility.openings !== false && node.openingKind !== "opening",
-      });
-    else if (node.type === "window" && resolveWallOpeningTransform(node, nodes))
+    else if (
+      (node.type === "door" || node.type === "window") &&
+      resolveWallOpeningTransform(node, nodes)
+    )
       registry.register({
         nodeId: node.id,
         kind: node.type,

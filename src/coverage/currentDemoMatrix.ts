@@ -15,17 +15,16 @@ export const currentVariantSupport = {
     cubby: "supported-pascal-equivalent",
   },
   door: {
-    opening: "parsed-not-rendered",
-    hinged: "supported-demo-symbol",
-    double: "supported-demo-symbol",
-    french: "supported-demo-symbol",
-    folding: "supported-demo-symbol",
-    pocket: "supported-demo-symbol",
-    barn: "supported-demo-symbol",
-    sliding: "supported-demo-symbol",
-    "garage-sectional": "supported-demo-symbol",
-    "garage-rollup": "supported-demo-symbol",
-    "garage-tiltup": "supported-demo-symbol",
+    hinged: "partially-supported",
+    double: "partially-supported",
+    french: "partially-supported",
+    folding: "partially-supported",
+    pocket: "partially-supported",
+    barn: "partially-supported",
+    sliding: "partially-supported",
+    "garage-sectional": "partially-supported",
+    "garage-rollup": "partially-supported",
+    "garage-tiltup": "partially-supported",
   },
   window: {
     fixed: "partially-supported",
@@ -40,4 +39,3 @@ export const currentVariantSupport = {
     louvered: "partially-supported",
   },
 } as const;
-export const doorVariantEvidence = Object.fromEntries(Object.entries(currentVariantSupport.door).map(([variant, overallStatus]) => [variant, { schemaRecognition: "partial", rawDataPreservation: "complete", levelResolution: "complete", transformResolution: "complete", physicalOpening: "complete", floorplanRendering: "pascal-equivalent", inspectorSupport: "complete", diagnosticSupport: "complete", testCoverage: "complete", overallStatus, evidence: { files: ["src/geometry/door.ts", "src/main.tsx", "src/coverage/renderedNodeRegistry.ts"], functions: ["resolveDoorPlanGeometry", "Door", "collectCurrentRenderRegistry"], tests: ["src/geometry/door.test.ts", "src/coverage/coverage.test.ts"] } }]));

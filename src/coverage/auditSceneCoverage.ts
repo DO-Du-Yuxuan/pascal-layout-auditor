@@ -3,7 +3,6 @@ import { resolveAncestorLevelId } from "../geometry/transform";
 import { finalDimensions } from "../geometry/transform";
 import { hasValidShelfFootprint } from "../geometry/shelf";
 import { hasStairPlanGeometry } from "../geometry/stairs";
-import { resolveDoorPlanGeometry } from "../geometry/door";
 import { OverallStatus } from "./coverageTypes";
 import { currentVariantSupport } from "./currentDemoMatrix";
 import { BUILTIN_KINDS, pascalCoreManifest } from "./pascalCoreManifest";
@@ -13,7 +12,7 @@ const variantOf = (node: NodeData) =>
   node.type === "stair"
     ? node.stairType
     : node.type === "door"
-      ? (node.openingKind === "opening" ? "opening" : (node.doorType ?? "hinged"))
+      ? (node.doorType ?? "hinged")
       : node.type === "window"
         ? (node.windowType ?? "fixed")
         : node.type === "shelf"
@@ -45,15 +44,13 @@ const invalidReason = (node: NodeData, nodes: Record<string, NodeData>) => {
     (!Number.isFinite(node.width) || node.width <= 0)
   )
     return `${node.type} width 无效`;
-  if (node.type === "door" && !resolveDoorPlanGeometry(node, nodes))
-    return "door wall-local opening 无效";
   return undefined;
 };
 
 export function auditSceneCoverage(
   nodes: Record<string, NodeData>,
   installedPlugins: unknown[] = [],
-  visibility: { slabs?: boolean; stairs?: boolean; openings?: boolean } = {},
+  visibility: { slabs?: boolean; stairs?: boolean } = {},
 ) {
   const builtin = new Set<string>(BUILTIN_KINDS),
     registry = collectCurrentRenderRegistry(nodes, visibility);
@@ -129,8 +126,6 @@ export function auditSceneCoverage(
       expectedVisibility: manifest?.classification
         .expectedVisibilityStrategy ?? ["unknown-plugin"],
       actualRenderStatus: render?.renderStrategy ?? "none",
-      physicalOpeningRendered: render?.physicalOpeningRendered ?? false,
-      symbolRendered: render?.symbolRendered ?? false,
       overallStatus,
       reason,
       evidence: manifest?.currentDemoStatus.evidence ?? {
