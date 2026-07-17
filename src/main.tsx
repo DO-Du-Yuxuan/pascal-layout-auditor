@@ -24,7 +24,8 @@ import { buildSlabPlanGeometry } from "./geometry/slab";
 import { buildCurvedStairPlanGeometry, buildStraightStairPlanGeometry, stairCorners } from "./geometry/stairs";
 import { zoneColor, zoneLabelPoint, zonePoints } from "./geometry/zone";
 import { buildAlignedDimensionDisplay, buildExteriorDimensions, DimensionSegment, dimensionDisplayGeometry, dimensionOverlayBounds, EXTENSION_OVERSHOOT_M, INNER_CHAIN_OFFSET_M, OVERALL_CHAIN_OFFSET_M, uprightDimensionAngle } from "./geometry/exterior-dimensions";
-import { buildManualMeasurementGeometry, buildMeasurementSnapSegments, formatMeasurement, ManualMeasurement, MeasurementMode, MeasurementSnap, MeasurementUnit, resolveMeasurementMode, snapMeasurementPoint } from "./geometry/manual-measurement";
+import { buildManualMeasurementGeometry, buildMeasurementSnapSegments, formatArea, formatMeasurement, ManualMeasurement, MeasurementMode, MeasurementSnap, MeasurementUnit, resolveMeasurementMode, snapMeasurementPoint } from "./geometry/manual-measurement";
+import { ALPHA_THRESHOLD, computeCropPlacement, floorplanImageCropDiagnostics, FloorplanImageCropCacheEntry, loadFloorplanImageCrop, peekFloorplanImageCrop, subscribeFloorplanImageCrop } from "./geometry/floorplan-image-crop";
 import { auditSceneCoverage } from "./coverage/auditSceneCoverage";
 
 type Visibility = {
@@ -62,6 +63,7 @@ const visibilityDefault: Visibility = {
   dimensions: true,
 };
 const emptyView: ViewBox = { minX: -5, minZ: -5, width: 10, height: 10 };
+const formatPanelLength = (valueMeters: number, unit: MeasurementUnit) => unit === "millimeters" ? `${formatMeasurement(valueMeters, unit)} mm` : formatMeasurement(valueMeters, unit);
 
 function App() {
   const [data, setData] = useState<Parsed | null>(null),
@@ -76,11 +78,13 @@ function App() {
     [manualMeasurements, setManualMeasurements] = useState<ManualMeasurement[]>([]),
     [measurementMode, setMeasurementMode] = useState<MeasurementMode>("off"),
     [measurementUnit, setMeasurementUnit] = useState<MeasurementUnit>("millimeters"),
+    [imageCropRevision, setImageCropRevision] = useState(0),
     [visibility, setVisibility] = useState(visibilityDefault);
   const input = useRef<HTMLInputElement>(null), nextMeasurementId = useRef(1);
   const nodes = data?.nodes || {};
   const levels = Object.values(nodes).filter((n) => n.type === "level");
   useEffect(() => { const closeMeasurement = (event: KeyboardEvent) => { if (event.key === "Escape") setMeasurementMode("off"); }; window.addEventListener("keydown", closeMeasurement); return () => window.removeEventListener("keydown", closeMeasurement); }, []);
+  useEffect(() => subscribeFloorplanImageCrop(() => setImageCropRevision((revision) => revision + 1)), []);
   const load = (text: string, name: string) => {
     try {
       const parsed = parseProject(JSON.parse(text));
@@ -147,9 +151,10 @@ function App() {
         : current,
     );
   const dimensionDiagnostics = useMemo(() => Object.values(nodes).filter((node) => node.type === "level").flatMap((level) => buildExteriorDimensions(nodes, level.id).diagnostics), [nodes]);
+  const imageDiagnostics = useMemo(() => floorplanImageCropDiagnostics(nodes), [nodes, imageCropRevision]);
   const coverage = useMemo(() => auditSceneCoverage(nodes, Array.isArray(data?.raw?.installedPlugins) ? data.raw.installedPlugins : [], visibility), [nodes, data, visibility]), diagnostics = useMemo(
-    () => (data ? [...data.diagnostics, ...transformDiagnostics(nodes), ...coverage.diagnostics, ...dimensionDiagnostics] : []),
-    [data, nodes, coverage, dimensionDiagnostics],
+    () => (data ? [...data.diagnostics, ...transformDiagnostics(nodes), ...coverage.diagnostics, ...dimensionDiagnostics, ...imageDiagnostics] : []),
+    [data, nodes, coverage, dimensionDiagnostics, imageDiagnostics],
   );
   const toggleVisibility = (key: keyof Visibility) => {
     const next = !visibility[key];
@@ -236,7 +241,7 @@ function App() {
               <h1>画布工作区</h1>
             </div>
             <div className="measurement-toolbar">
-              <label>单位 <select value={measurementUnit} onChange={(event) => setMeasurementUnit(event.target.value as MeasurementUnit)}><option value="millimeters">毫米</option><option value="feet-inches">英尺–英寸</option></select></label>
+              <label>全局单位 <select value={measurementUnit} onChange={(event) => setMeasurementUnit(event.target.value as MeasurementUnit)}><option value="millimeters">公制（mm / m²）</option><option value="feet-inches">英制（ft-in / ft²）</option></select></label>
               <button className={`measure-toggle ${measurementMode !== "off" ? "active" : ""}`} title="开启后点击两点测量；按住 Shift 锁定水平/垂直；Esc 退出" onClick={() => setMeasurementMode((current) => current === "off" ? "aligned" : "off")}>{measurementMode === "off" ? "测量" : "退出测量"}</button>
               <button className="primary" onClick={addCanvas}>
                 + 添加画布
@@ -654,7 +659,7 @@ function Plan({
       </svg>
       {measurementMode !== "off" && <div className="measure-hint">{measurementStart ? `${orthogonalLock ? activeMeasurementMode === "horizontal" ? "水平正交" : "垂直正交" : "自由对齐"} · 点击第二点 · Shift 正交 · Esc 退出` : "点击第一点 · 按住 Shift 正交 · Esc 退出"}</div>}
       <Compass rotation={rotation} />
-      <div className="legend">{vb} m</div>
+      <div className="legend">{formatPanelLength(viewBox.width, measurementUnit)} × {formatPanelLength(viewBox.height, measurementUnit)}</div>
     </div>
   );
 }
@@ -889,6 +894,15 @@ function StairEntry({ node, onSelect }: { node: NodeData; onSelect: (id: string)
   const entry = buildSpiralStairDestinationEntry(node); if (!entry) return null;
   return <g data-selectable onClick={() => onSelect(node.id)}><path d={`M ${entry.footprint.map(p=>`${p.x} ${p.z}`).join(' L ')} Z`} fill="rgba(255,255,255,.02)" stroke="#59635f" strokeWidth=".025" strokeDasharray=".08 .05"/><line x1={entry.downDirection.from.x} y1={entry.downDirection.from.z} x2={entry.downDirection.to.x} y2={entry.downDirection.to.z} stroke="#59635f" strokeWidth=".03" markerEnd="url(#stair-down)"/></g>;
 }
+function useFloorplanImageCrop(imageUrl?: string): FloorplanImageCropCacheEntry | null {
+  const [entry, setEntry] = useState<FloorplanImageCropCacheEntry | null>(() => imageUrl ? peekFloorplanImageCrop(imageUrl) : null);
+  useEffect(() => {
+    let cancelled = false; setEntry(imageUrl ? peekFloorplanImageCrop(imageUrl) : null);
+    if (imageUrl) loadFloorplanImageCrop(imageUrl).then((result) => { if (!cancelled) setEntry(result); });
+    return () => { cancelled = true; };
+  }, [imageUrl]);
+  return entry;
+}
 function Furniture({
   node,
   nodes,
@@ -905,10 +919,10 @@ function Furniture({
   onSelect: (id: string) => void;
 }) {
   const dimensions = finalDimensions(node),
-    transform = resolveItemPlanTransform(node.id, nodes);
+    transform = resolveItemPlanTransform(node.id, nodes), imageUrl = node.asset?.floorPlanUrl as string | undefined, cropEntry = useFloorplanImageCrop(imageUrl);
   if (!dimensions || transform.status === "error") return null;
   const matrix = composePascalTransformWithWorldToSvg(transform),
-    imageUrl = node.asset?.floorPlanUrl;
+    cropPlacement = cropEntry && !cropEntry.isFallback ? computeCropPlacement({ x: cropEntry.cropX, y: cropEntry.cropY, width: cropEntry.cropWidth, height: cropEntry.cropHeight }, dimensions.width, dimensions.depth) : null;
   return (
     <g
       data-selectable
@@ -917,14 +931,9 @@ function Furniture({
       onClick={() => onSelect(node.id)}
     >
       {visibility.images && imageUrl && (
-        <image
-          href={imageUrl}
-          x={-dimensions.width / 2}
-          y={-dimensions.depth / 2}
-          width={dimensions.width}
-          height={dimensions.depth}
-          preserveAspectRatio="none"
-        />
+        cropEntry && cropPlacement
+          ? <svg x={-dimensions.width / 2 + cropPlacement.offsetX} y={-dimensions.depth / 2 + cropPlacement.offsetY} width={cropPlacement.drawWidth} height={cropPlacement.drawHeight} viewBox={`${cropEntry.cropX} ${cropEntry.cropY} ${cropEntry.cropWidth} ${cropEntry.cropHeight}`} preserveAspectRatio="xMidYMid meet" overflow="hidden"><image href={imageUrl} x="0" y="0" width={cropEntry.naturalWidth} height={cropEntry.naturalHeight} preserveAspectRatio="xMidYMid meet" /></svg>
+          : <image href={imageUrl} x={-dimensions.width / 2} y={-dimensions.depth / 2} width={dimensions.width} height={dimensions.depth} preserveAspectRatio="none" />
       )}
       {visibility.boxes && (
         <rect
@@ -1006,50 +1015,14 @@ function Inspector({
         <p>点击对象查看原始字段与派生几何。</p>
       </section>
     );
-  if (node.type === "item") {
-    const d = finalDimensions(node),
-      t = resolveItemPlanTransform(node.id, nodes);
-    return (
-      <section className="side-section inspector">
-        <h2>{node.name || node.asset?.name || "家具"}</h2>
-        <dl>
-          <dt>尺寸 W/H/D</dt>
-          <dd>{d ? `${d.width}/${d.height}/${d.depth}m` : "无效"}</dd>
-          <dt>位置 x/z</dt>
-          <dd>{t.status === "ok" ? `${t.x}/${t.z}` : "未解析"}</dd>
-          <dt>角度</dt>
-          <dd>
-            {t.status === "ok" ? `${normalizeDegrees(t.rotationY)}°` : "—"}
-          </dd>
-          <dt>所属楼层</dt>
-          <dd>{t.ancestorLevelId || "未确定"}</dd>
-          <dt>viewBox</dt>
-          <dd>{`${viewBox.minX} ${viewBox.minZ} ${viewBox.width} ${viewBox.height}`}</dd>
-        </dl>
-        <pre>
-          {JSON.stringify(
-            {
-              id: node.id,
-              parentId: node.parentId,
-              position: node.position,
-              rotation: node.rotation,
-              scale: node.scale,
-              dimensions: node.asset?.dimensions,
-            },
-            null,
-            2,
-          )}
-        </pre>
-      </section>
-    );
-  }
+  if (node.type === "item") return <ItemInspector node={node} nodes={nodes} viewBox={viewBox} unit={measurementUnit} />;
   if (node.type === "shelf") {
     const shelf = resolveShelfData(node), transform = resolveShelfPlanTransform(node.id, nodes), matrix = shelfMatrix(node, nodes);
-    return <section className="side-section inspector"><h2>选择了一个 Shelf</h2><pre>{JSON.stringify({ id: node.id, parentId: node.parentId, ancestorLevelId: transform.ancestorLevelId, style: shelf.style, position: node.position, rotation: node.rotation, width: shelf.width, depth: shelf.depth, height: shelf.height, thickness: shelf.thickness, rows: shelf.rows, columns: shelf.columns, withBack: shelf.withBack, withSides: shelf.withSides, withBottom: shelf.withBottom, bracketStyle: shelf.bracketStyle, children: node.children ?? [], resolvedWorldPosition: transform.status === 'ok' ? [transform.x, transform.z] : null, resolvedRotation: transform.status === 'ok' ? transform.rotationY : null, finalSvgMatrix: matrix, sourcePath: `nodes.${node.id}`, schemaDefaultFields: shelf.defaultFields }, null, 2)}</pre></section>;
+    return <section className="side-section inspector"><h2>选择了一个 Shelf</h2><pre>{JSON.stringify({ id: node.id, parentId: node.parentId, ancestorLevelId: transform.ancestorLevelId, style: shelf.style, position: node.position, rotation: node.rotation, displayedDimensions: { width: formatPanelLength(shelf.width, measurementUnit), depth: formatPanelLength(shelf.depth, measurementUnit), height: formatPanelLength(shelf.height, measurementUnit), thickness: formatPanelLength(shelf.thickness, measurementUnit) }, widthMeters: shelf.width, depthMeters: shelf.depth, heightMeters: shelf.height, thicknessMeters: shelf.thickness, rows: shelf.rows, columns: shelf.columns, withBack: shelf.withBack, withSides: shelf.withSides, withBottom: shelf.withBottom, bracketStyle: shelf.bracketStyle, children: node.children ?? [], resolvedWorldPosition: transform.status === 'ok' ? [transform.x, transform.z] : null, resolvedRotation: transform.status === 'ok' ? transform.rotationY : null, finalSvgMatrix: matrix, sourcePath: `nodes.${node.id}`, schemaDefaultFields: shelf.defaultFields }, null, 2)}</pre></section>;
   }
   if (node.type === "slab") {
     const geometry = buildSlabPlanGeometry(node), ancestor = resolveAncestorLevelId(node.id, nodes), audit = coverage.entries.find((entry) => entry.nodeId === node.id);
-    return <section className="side-section inspector"><h2>选择了一个 Slab</h2><pre>{JSON.stringify({ id: node.id, parentId: node.parentId, ancestorLevelId: ancestor.levelId, polygon: node.polygon, holes: node.holes ?? [], holeMetadata: node.holeMetadata ?? [], elevation: node.elevation ?? .05, autoFromWalls: node.autoFromWalls ?? false, visible: node.visible, outerArea: geometry?.outerArea ?? null, holeArea: geometry?.holeArea ?? null, netArea: geometry?.netArea ?? null, coverageStatus: audit?.overallStatus ?? 'none', renderRegistration: audit?.actualRenderStatus ?? 'none' }, null, 2)}</pre></section>;
+    return <section className="side-section inspector"><h2>选择了一个 Slab</h2><pre>{JSON.stringify({ id: node.id, parentId: node.parentId, ancestorLevelId: ancestor.levelId, polygon: node.polygon, holes: node.holes ?? [], holeMetadata: node.holeMetadata ?? [], displayedElevation: formatPanelLength(node.elevation ?? .05, measurementUnit), elevationMeters: node.elevation ?? .05, autoFromWalls: node.autoFromWalls ?? false, visible: node.visible, displayedArea: geometry ? { outer: formatArea(geometry.outerArea, measurementUnit), holes: formatArea(geometry.holeArea, measurementUnit), net: formatArea(geometry.netArea, measurementUnit) } : null, areaSquareMeters: geometry ? { outer: geometry.outerArea, holes: geometry.holeArea, net: geometry.netArea } : null, coverageStatus: audit?.overallStatus ?? 'none', renderRegistration: audit?.actualRenderStatus ?? 'none' }, null, 2)}</pre></section>;
   }
   return (
     <section className="side-section inspector">
@@ -1057,6 +1030,20 @@ function Inspector({
       <pre>{JSON.stringify(node, null, 2)}</pre>
     </section>
   );
+}
+function ItemInspector({ node, nodes, viewBox, unit }: { node: NodeData; nodes: Record<string, NodeData>; viewBox: ViewBox; unit: MeasurementUnit }) {
+  const dimensions = finalDimensions(node), transform = resolveItemPlanTransform(node.id, nodes), imageUrl = node.asset?.floorPlanUrl as string | undefined, cropEntry = useFloorplanImageCrop(imageUrl), placement = dimensions && cropEntry && !cropEntry.isFallback && cropEntry.cropWidth > 0 && cropEntry.cropHeight > 0 ? computeCropPlacement({ x: cropEntry.cropX, y: cropEntry.cropY, width: cropEntry.cropWidth, height: cropEntry.cropHeight }, dimensions.width, dimensions.depth) : null;
+  return <section className="side-section inspector">
+    <h2>{node.name || node.asset?.name || "家具"}</h2>
+    <dl>
+      <dt>尺寸 W/H/D</dt><dd>{dimensions ? `${formatPanelLength(dimensions.width, unit)} / ${formatPanelLength(dimensions.height, unit)} / ${formatPanelLength(dimensions.depth, unit)}` : "无效"}</dd>
+      <dt>位置 x/z</dt><dd>{transform.status === "ok" ? `${formatPanelLength(transform.x, unit)} / ${formatPanelLength(transform.z, unit)}` : "未解析"}</dd>
+      <dt>角度</dt><dd>{transform.status === "ok" ? `${normalizeDegrees(transform.rotationY)}°` : "—"}</dd>
+      <dt>所属楼层</dt><dd>{transform.ancestorLevelId || "未确定"}</dd>
+      <dt>画布范围</dt><dd>{`${formatPanelLength(viewBox.width, unit)} × ${formatPanelLength(viewBox.height, unit)}`}</dd>
+    </dl>
+    <pre>{JSON.stringify({ id: node.id, parentId: node.parentId, position: node.position, rotation: node.rotation, scale: node.scale, physicalDimensionsMeters: node.asset?.dimensions, floorPlanImageUrl: imageUrl ?? null, naturalImageWidth: cropEntry?.naturalWidth ?? null, naturalImageHeight: cropEntry?.naturalHeight ?? null, alphaThreshold: cropEntry?.alphaThreshold ?? ALPHA_THRESHOLD, cropX: cropEntry?.cropX ?? null, cropY: cropEntry?.cropY ?? null, cropWidth: cropEntry?.cropWidth ?? null, cropHeight: cropEntry?.cropHeight ?? null, cropApplied: Boolean(cropEntry && !cropEntry.isFallback && placement), cropFallbackReason: cropEntry?.fallbackReason ?? (imageUrl ? "loading" : "missing-url"), contentAspectRatio: placement?.contentAspectRatio ?? null, physicalAspectRatio: placement?.physicalAspectRatio ?? (dimensions ? dimensions.width / dimensions.depth : null), aspectDifferencePercent: placement?.aspectDifferencePercent ?? null, finalDrawWidth: placement?.drawWidth ?? dimensions?.width ?? null, finalDrawHeight: placement?.drawHeight ?? dimensions?.depth ?? null, drawOffsetX: placement?.offsetX ?? 0, drawOffsetY: placement?.offsetY ?? 0, uniformScaleApplied: Boolean(cropEntry && !cropEntry.isFallback && placement) }, null, 2)}</pre>
+  </section>;
 }
 function Stats({ nodes }: { nodes: Record<string, NodeData> }) {
   const c = (type: string) =>

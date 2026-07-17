@@ -56,10 +56,14 @@ export function snapMeasurementPoint(point: MeasurementPoint, segments: SnapSegm
 const gcd = (left: number, right: number): number => right ? gcd(right, left % right) : left;
 export function formatMeasurement(valueMeters: number, unit: MeasurementUnit): string {
   if (unit === "millimeters") return String(Math.round(valueMeters * 1000));
-  const totalSixteenths = Math.round(Math.abs(valueMeters) * 39.37007874015748 * 16), feet = Math.floor(totalSixteenths / 192), remainder = totalSixteenths % 192, inches = Math.floor(remainder / 16), fraction = remainder % 16;
-  if (!fraction) return `${feet}'-${inches}\"`;
+  const sign = valueMeters < 0 ? "−" : "", totalSixteenths = Math.round(Math.abs(valueMeters) * 39.37007874015748 * 16), feet = Math.floor(totalSixteenths / 192), remainder = totalSixteenths % 192, inches = Math.floor(remainder / 16), fraction = remainder % 16;
+  if (!fraction) return `${sign}${feet}'-${inches}\"`;
   const divisor = gcd(fraction, 16);
-  return `${feet}'-${inches} ${fraction / divisor}/${16 / divisor}\"`;
+  return `${sign}${feet}'-${inches} ${fraction / divisor}/${16 / divisor}\"`;
+}
+
+export function formatArea(valueSquareMeters: number, unit: MeasurementUnit): string {
+  return unit === "millimeters" ? `${valueSquareMeters.toFixed(2)} m²` : `${(valueSquareMeters * 10.76391041671).toFixed(2)} ft²`;
 }
 
 export function buildManualMeasurementGeometry(start: MeasurementPoint, end: MeasurementPoint, mode: Exclude<MeasurementMode, "off">): ManualMeasurementGeometry {
