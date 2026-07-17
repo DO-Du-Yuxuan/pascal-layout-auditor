@@ -657,7 +657,24 @@ function Opening({
   const width = Number.isFinite(node.width) ? node.width : 0.9,
     depth = 0.12,
     angle = (transform.rotationY * 180) / Math.PI;
-  if (node.type === "door")
+  if (node.type === "door") {
+    const color = selected ? "#e75c3c" : "#9b6736",
+      doorType = node.doorType ?? "hinged",
+      isDouble = doorType === "double" || doorType === "french",
+      rotationY = Array.isArray(node.rotation) && Number.isFinite(node.rotation[1]) ? node.rotation[1] : 0,
+      normalizedRotation = ((rotationY % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2),
+      flipped = normalizedRotation > Math.PI / 2 && normalizedRotation < Math.PI * 3 / 2,
+      baseHinges = node.hingesSide ?? "left",
+      hinges = flipped ? (baseHinges === "left" ? "right" : "left") : baseHinges,
+      baseSwing = node.swingDirection ?? "inward",
+      swing = flipped ? (baseSwing === "inward" ? "outward" : "inward") : baseSwing,
+      swingSign = swing === "inward" ? 1 : -1;
+    const leaf = (hingeX: number, closedVectorX: number, signedQuarterTurn: number, key: string) => {
+      const radius = Math.abs(closedVectorX), closedTipX = hingeX + closedVectorX,
+        openTipX = hingeX, openTipY = closedVectorX * Math.sin(signedQuarterTurn),
+        sweepFlag = signedQuarterTurn >= 0 ? 1 : 0;
+      return <React.Fragment key={key}><line x1={hingeX} y1="0" x2={openTipX} y2={openTipY} stroke={color} strokeWidth={selected ? ".035" : ".025"} vectorEffect="non-scaling-stroke"/><path d={`M ${closedTipX} 0 A ${radius} ${radius} 0 0 ${sweepFlag} ${openTipX} ${openTipY}`} fill="none" stroke={color} strokeWidth={selected ? ".026" : ".018"} strokeDasharray=".08 .06" strokeLinecap="round" vectorEffect="non-scaling-stroke"/></React.Fragment>;
+    };
     return (
       <g
         data-selectable
@@ -670,11 +687,15 @@ function Opening({
           width={width}
           height={depth}
           fill="#f7f8f5"
-          stroke={selected ? "#e75c3c" : "#9b6736"}
+          stroke={color}
           strokeWidth={selected ? ".045" : ".025"}
         />
+        {node.openingKind !== "opening" && (isDouble
+          ? <>{leaf(-width / 2, width / 2, swingSign * Math.PI / 2, "left")}{leaf(width / 2, -width / 2, -swingSign * Math.PI / 2, "right")}</>
+          : doorType === "hinged" && leaf(hinges === "left" ? -width / 2 : width / 2, hinges === "left" ? width : -width, swingSign * (hinges === "left" ? 1 : -1) * Math.PI / 2, "single"))}
       </g>
     );
+  }
   return (
     <g
       data-selectable
