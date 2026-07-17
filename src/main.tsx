@@ -22,6 +22,7 @@ import { hasValidShelfFootprint, resolveShelfData, resolveShelfPlanTransform, sh
 import { buildSpiralStairDestinationEntry, buildSpiralStairPlanGeometry, spiralStairCorners } from "./geometry/spiral-stair";
 import { buildSlabPlanGeometry } from "./geometry/slab";
 import { buildCurvedStairPlanGeometry, buildStraightStairPlanGeometry, stairCorners } from "./geometry/stairs";
+import { zoneColor, zoneLabelPoint, zonePoints } from "./geometry/zone";
 import { auditSceneCoverage } from "./coverage/auditSceneCoverage";
 
 type Visibility = {
@@ -552,26 +553,33 @@ function Compass({ rotation }: { rotation: number }) {
   );
 }
 function Polygon({ node }: { node: NodeData }) {
-  if (!Array.isArray(node.polygon)) return null;
-  const points = node.polygon
-      .map((p: any) => `${p[0]},${p[2] ?? p[1]}`)
-      .join(" "),
-    first = node.polygon[0];
+  const polygon = zonePoints(node), label = zoneLabelPoint(node), color = zoneColor(node);
+  if (polygon.length < 3) return null;
+  const points = polygon.map((point) => `${point.x},${point.z}`).join(" ");
   return (
     <g>
       <polygon
         points={points}
-        fill="#c9d9cf"
-        opacity=".42"
-        stroke="#9bb3a5"
+        fill={color}
+        fillOpacity=".12"
+        stroke={color}
+        strokeOpacity=".32"
         strokeWidth=".03"
       />
-      {first && (
+      {label && (
         <text
-          x={first[0]}
-          y={first[2] ?? first[1]}
+          x={label.x}
+          y={label.z}
           className="zone-label"
           fontSize=".22"
+          fontWeight="700"
+          textAnchor="middle"
+          dominantBaseline="middle"
+          style={{ fill: color }}
+          stroke="#ffffff"
+          strokeWidth=".035"
+          strokeOpacity=".9"
+          paintOrder="stroke"
         >
           {node.name || "Zone"}
         </text>
