@@ -64,13 +64,14 @@ const visibilityDefault: Visibility = {
   dimensions: true,
 };
 const emptyView: ViewBox = { minX: -5, minZ: -5, width: 10, height: 10 };
+const DEFAULT_CANVAS_ROTATION = 90;
 const formatPanelLength = (valueMeters: number, unit: MeasurementUnit) => unit === "millimeters" ? `${formatMeasurement(valueMeters, unit)} mm` : formatMeasurement(valueMeters, unit);
 
 function App() {
   const [data, setData] = useState<Parsed | null>(null),
     [file, setFile] = useState("未导入文件"),
     [canvases, setCanvases] = useState<CanvasState[]>([
-      { id: 1, levelId: "", viewBox: emptyView, rotation: 0 },
+      { id: 1, levelId: "", viewBox: emptyView, rotation: DEFAULT_CANVAS_ROTATION },
     ]),
     [nextId, setNextId] = useState(2),
     [selectedId, setSelectedId] = useState<string | null>(null),
@@ -108,7 +109,7 @@ function App() {
           id: 1,
           levelId: first,
           viewBox: computeViewBox(parsed.nodes, first, true),
-          rotation: 0,
+          rotation: DEFAULT_CANVAS_ROTATION,
         },
       ]);
       setNextId(2);
@@ -141,7 +142,7 @@ function App() {
         id: nextId,
         levelId,
         viewBox: computeViewBox(nodes, levelId, visibility.dimensions),
-        rotation: 0,
+        rotation: DEFAULT_CANVAS_ROTATION,
       },
     ]);
     setNextId((id) => id + 1);
@@ -668,7 +669,7 @@ function Compass({ rotation }: { rotation: number }) {
     <div className="compass" title={`视图旋转 ${rotation}°`}>
       <div
         className="compass-arrow"
-        style={{ transform: `rotate(${-rotation}deg)` }}
+        style={{ transform: `rotate(${DEFAULT_CANVAS_ROTATION - rotation}deg)` }}
       >
         ▲
       </div>
