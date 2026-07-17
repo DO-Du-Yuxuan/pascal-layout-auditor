@@ -93,7 +93,7 @@ describe("Pascal Core coverage audit", () => {
           ).toBeGreaterThan(0);
     }
   });
-  it("reports curved stair as parsed-not-rendered with an error and preserves its data", () => {
+  it("registers curved stair as supported and preserves its data", () => {
     const curved = {
       id: "curved",
       type: "stair",
@@ -114,18 +114,12 @@ describe("Pascal Core coverage audit", () => {
       report.entries.find((entry) => entry.nodeId === "curved"),
     ).toMatchObject({
       ancestorLevelId: "level",
-      overallStatus: "parsed-not-rendered",
-      actualRenderStatus: "none",
+      overallStatus: "supported-pascal-equivalent",
+      actualRenderStatus: "self",
     });
-    expect(report.diagnostics).toContainEqual(
-      expect.objectContaining({
-        severity: "error",
-        code: "parsed-not-rendered",
-        nodeId: "curved",
-      }),
-    );
+    expect(report.diagnostics.some((diagnostic) => diagnostic.nodeId === "curved")).toBe(false);
   });
-  it("does not misreport containers or intentionally hidden non-straight stair segments", () => {
+  it("reports stair-segment as emitted by its normal parent stair", () => {
     const spiral = {
       id: "spiral",
       type: "stair",
@@ -148,7 +142,7 @@ describe("Pascal Core coverage audit", () => {
     ).toBe("parsed-container");
     expect(
       report.entries.find((entry) => entry.nodeId === "segment")?.overallStatus,
-    ).toBe("parsed-intentionally-hidden");
+    ).toBe("parsed-parent-emitted");
     expect(
       report.diagnostics.some((diagnostic) => diagnostic.nodeId === "segment"),
     ).toBe(false);
@@ -221,20 +215,29 @@ describe("Pascal Core coverage audit", () => {
       }),
     );
   });
-  it("locks accepted item, wall, shelf and spiral statuses to their evidence", () => {
+  it("locks accepted item, wall, shelf, slab and stair statuses to their evidence", () => {
     const byKind = Object.fromEntries(
       pascalCoreManifest.map((entry) => [entry.kind, entry.currentDemoStatus]),
     );
     expect(byKind.item.overallStatus).toBe("supported-exact");
     expect(byKind.wall.overallStatus).toBe("supported-pascal-equivalent");
     expect(byKind.shelf.overallStatus).toBe("supported-pascal-equivalent");
+    expect(byKind.slab.overallStatus).toBe("supported-pascal-equivalent");
     expect(byKind.stair.overallStatus).toBe("partially-supported");
     expect(currentVariantSupport.stair.spiral).toBe("supported-demo-symbol");
-    expect(currentVariantSupport.stair.curved).toBe("parsed-not-rendered");
-    expect(currentVariantSupport.stair.straight).toBe("parsed-not-rendered");
+    expect(currentVariantSupport.stair.curved).toBe("supported-pascal-equivalent");
+    expect(currentVariantSupport.stair.straight).toBe("supported-pascal-equivalent");
     expect(byKind.item.testCoverage).toBe("complete");
     expect(byKind.wall.testCoverage).toBe("complete");
     expect(byKind.shelf.testCoverage).toBe("complete");
+  });
+  it("keeps ceiling intentionally hidden and treats a disabled slab layer as non-error", () => {
+    const slab = { id: "slab", type: "slab", parentId: "level", polygon: [[0, 0], [3, 0], [3, 2], [0, 2]] };
+    const ceiling = { id: "ceiling", type: "ceiling", parentId: "level", polygon: [[0, 0], [3, 0], [3, 2], [0, 2]] };
+    const report = auditSceneCoverage({ level, slab, ceiling } as any, [], { slabs: false });
+    expect(report.entries.find((entry) => entry.nodeId === "slab")).toMatchObject({ overallStatus: "parsed-intentionally-hidden", actualRenderStatus: "hidden-by-layer-toggle" });
+    expect(report.entries.find((entry) => entry.nodeId === "ceiling")).toMatchObject({ overallStatus: "parsed-intentionally-hidden", actualRenderStatus: "intentionally-hidden", reason: "Ceiling数据用于顶面/天花视图，不在当前平面布置图默认渲染。" });
+    expect(report.diagnostics.some((diagnostic) => diagnostic.nodeId === "slab" || diagnostic.nodeId === "ceiling")).toBe(false);
   });
   it("counts invalid built-in geometry instead of claiming renderer support", () => {
     const badShelf = {

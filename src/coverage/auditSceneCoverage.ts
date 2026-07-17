@@ -2,7 +2,7 @@ import { Diagnostic, NodeData } from "../types";
 import { resolveAncestorLevelId } from "../geometry/transform";
 import { finalDimensions } from "../geometry/transform";
 import { hasValidShelfFootprint } from "../geometry/shelf";
-import { buildSpiralStairPlanGeometry } from "../geometry/spiral-stair";
+import { hasStairPlanGeometry } from "../geometry/stairs";
 import { OverallStatus } from "./coverageTypes";
 import { currentVariantSupport } from "./currentDemoMatrix";
 import { BUILTIN_KINDS, pascalCoreManifest } from "./pascalCoreManifest";
@@ -19,7 +19,7 @@ const variantOf = (node: NodeData) =>
           ? (node.style ?? "wall-shelf")
           : undefined;
 
-const invalidReason = (node: NodeData) => {
+const invalidReason = (node: NodeData, nodes: Record<string, NodeData>) => {
   if (node.type === "item" && !finalDimensions(node))
     return "item dimensions/scale 无效";
   if (node.type === "shelf" && !hasValidShelfFootprint(node))
@@ -35,10 +35,9 @@ const invalidReason = (node: NodeData) => {
   }
   if (
     node.type === "stair" &&
-    node.stairType === "spiral" &&
-    !buildSpiralStairPlanGeometry(node)
+    !hasStairPlanGeometry(node, nodes)
   )
-    return "spiral stair 关键几何无效";
+    return "stair 关键几何无效";
   if (
     (node.type === "door" || node.type === "window") &&
     node.width !== undefined &&
@@ -51,9 +50,10 @@ const invalidReason = (node: NodeData) => {
 export function auditSceneCoverage(
   nodes: Record<string, NodeData>,
   installedPlugins: unknown[] = [],
+  visibility: { slabs?: boolean; stairs?: boolean } = {},
 ) {
   const builtin = new Set<string>(BUILTIN_KINDS),
-    registry = collectCurrentRenderRegistry(nodes);
+    registry = collectCurrentRenderRegistry(nodes, visibility);
   const entries = Object.values(nodes).map((node) => {
     const manifest = pascalCoreManifest.find(
         (entry) => entry.kind === node.type,
@@ -61,7 +61,7 @@ export function auditSceneCoverage(
       variant = variantOf(node),
       ancestor = resolveAncestorLevelId(node.id, nodes),
       render = registry.get(node.id),
-      invalid = invalidReason(node);
+      invalid = invalidReason(node, nodes);
     let overallStatus: OverallStatus, reason: string;
     if (!manifest) {
       overallStatus = "unknown-plugin-node";
@@ -74,7 +74,10 @@ export function auditSceneCoverage(
         manifest.classification.expectedVisibilityStrategy.includes("container")
           ? "parsed-container"
           : "parsed-intentionally-hidden";
-      reason = "按当前视图策略正常不独立绘制";
+      reason = node.type === "ceiling" ? "Ceiling数据用于顶面/天花视图，不在当前平面布置图默认渲染。" : "按当前视图策略正常不独立绘制";
+    } else if (render?.renderStrategy === "hidden-by-layer-toggle") {
+      overallStatus = "parsed-intentionally-hidden";
+      reason = "图层被用户关闭，未参与当前画布绘制";
     } else if (render?.renderStrategy === "parent-emitted") {
       overallStatus = "parsed-parent-emitted";
       reason = `由父节点 ${render.emittedByNodeId} 输出`;

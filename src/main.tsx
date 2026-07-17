@@ -20,6 +20,8 @@ import { inspectNodes } from "./diagnostics/check";
 import { buildExperimentalWalls, Wall as PascalWall } from "./geometry/walls";
 import { hasValidShelfFootprint, resolveShelfData, resolveShelfPlanTransform, shelfCorners, shelfDividerXs, shelfMatrix } from "./geometry/shelf";
 import { buildSpiralStairDestinationEntry, buildSpiralStairPlanGeometry, spiralStairCorners } from "./geometry/spiral-stair";
+import { buildSlabPlanGeometry } from "./geometry/slab";
+import { buildCurvedStairPlanGeometry, buildStraightStairPlanGeometry, stairCorners } from "./geometry/stairs";
 import { auditSceneCoverage } from "./coverage/auditSceneCoverage";
 
 type Visibility = {
@@ -29,6 +31,7 @@ type Visibility = {
   axes: boolean;
   names: boolean;
   zones: boolean;
+  slabs: boolean;
   walls: boolean;
   shelves: boolean;
   stairs: boolean;
@@ -47,6 +50,7 @@ const visibilityDefault: Visibility = {
   axes: true,
   names: false,
   zones: true,
+  slabs: true,
   walls: true,
   shelves: true,
   stairs: true,
@@ -126,7 +130,7 @@ function App() {
         ? current.filter((canvas) => canvas.id !== id)
         : current,
     );
-  const coverage = useMemo(() => auditSceneCoverage(nodes, Array.isArray(data?.raw?.installedPlugins) ? data.raw.installedPlugins : []), [nodes, data]), diagnostics = useMemo(
+  const coverage = useMemo(() => auditSceneCoverage(nodes, Array.isArray(data?.raw?.installedPlugins) ? data.raw.installedPlugins : [], visibility), [nodes, data, visibility]), diagnostics = useMemo(
     () => (data ? [...data.diagnostics, ...transformDiagnostics(nodes), ...coverage.diagnostics] : []),
     [data, nodes],
   );
@@ -172,6 +176,7 @@ function App() {
                 axes: "局部 +Z 轴",
                 names: "家具名称",
                 zones: "Zone",
+                slabs: "Slab（楼地面）",
                 walls: "墙体",
                 openings: "门窗",
                 shelves: "Shelf",
@@ -198,6 +203,7 @@ function App() {
             node={selectedId ? nodes[selectedId] : null}
             nodes={nodes}
             viewBox={canvases[0]?.viewBox || emptyView}
+            coverage={coverage}
           />
           <Diagnostics diagnostics={diagnostics} />
           <CoverageReport coverage={coverage} />
@@ -362,9 +368,7 @@ function computeViewBox(
       const exact = exactWallById.get(node.id);
       if (exact?.validation.valid) points.push(...exact.footprint.map((point) => ({ x: point.x, z: point.y })));
     } else if (
-      (node.type === "zone" ||
-        node.type === "slab" ||
-        node.type === "ceiling") &&
+      (node.type === "zone" || node.type === "slab") &&
       Array.isArray(node.polygon)
     ) {
       for (const point of node.polygon)
@@ -386,8 +390,8 @@ function computeViewBox(
         );
     } else if (node.type === "shelf") {
       points.push(...shelfCorners(node, nodes));
-    } else if (node.type === "stair" && node.stairType === 'spiral') {
-      points.push(...spiralStairCorners(node));
+    } else if (node.type === "stair") {
+      points.push(...stairCorners(node, nodes));
     }
   }
   for (const stair of stairEntriesOnLevel(nodes, levelId)) points.push(...spiralStairCorners(stair));
@@ -480,6 +484,7 @@ function Plan({
           fill="#f7f8f5"
         />
         <g transform={`rotate(${rotation} ${cx} ${cz})`}>
+          {visibility.slabs && rendered.filter((n) => n.type === "slab" && n.visible !== false).map((n) => <Slab key={n.id} node={n} selected={selectedId === n.id} onSelect={onSelect} />)}
           {visibility.zones &&
             rendered
               .filter((n) => n.type === "zone")
@@ -512,7 +517,7 @@ function Plan({
           {visibility.stairs && rendered
             .filter((n) => n.type === "stair")
             .map((n) => (
-              <Stair key={n.id} node={n} onSelect={onSelect} />
+              <Stair key={n.id} node={n} nodes={nodes} onSelect={onSelect} />
             ))}
           {visibility.stairs && stairEntries.map((n) => <StairEntry key={`entry-${n.id}`} node={n} onSelect={onSelect} />)}
           {items.map((n) => (
@@ -573,6 +578,11 @@ function Polygon({ node }: { node: NodeData }) {
       )}
     </g>
   );
+}
+function Slab({ node, selected, onSelect }: { node: NodeData; selected: boolean; onSelect: (id: string) => void }) {
+  const geometry = buildSlabPlanGeometry(node);
+  if (!geometry) return null;
+  return <path d={geometry.path} fill={selected ? "#dbe8dc" : "#e8eee8"} fillRule="evenodd" clipRule="evenodd" stroke={selected ? "#e75c3c" : "#b5c2b8"} strokeWidth={selected ? ".04" : ".018"} opacity=".78" onClick={() => onSelect(node.id)} />;
 }
 function Wall({
   node,
@@ -682,14 +692,23 @@ function Opening({
 }
 function Stair({
   node,
+  nodes,
   onSelect,
 }: {
   node: NodeData;
+  nodes: Record<string, NodeData>;
   onSelect: (id: string) => void;
 }) {
-  if (node.stairType !== 'spiral') return null;
-  const geometry = buildSpiralStairPlanGeometry(node); if (!geometry) return null;
-  return <g onClick={() => onSelect(node.id)}><path d={geometry.footprintPath} fill="rgba(255,255,255,.08)" stroke="#171717" strokeWidth=".025" />{geometry.treadLines.map((line,index)=><line key={index} x1={line.start.x} y1={line.start.z} x2={line.end.x} y2={line.end.z} stroke="#262626" strokeWidth={index===geometry.treadLines.length-1?'.035':'.018'} />)}{geometry.railingPaths.map((path,index)=><polyline key={index} points={path.map(p=>`${p.x},${p.z}`).join(' ')} fill="none" stroke="#171717" strokeWidth=".025" />)}{geometry.centerColumn&&<circle cx={geometry.centerColumn.x} cy={geometry.centerColumn.z} r={Math.max(geometry.innerRadius*.18,.06)} fill="#d6d3d1" stroke="#171717" strokeWidth=".02"/>}<line x1={geometry.upDirection.from.x} y1={geometry.upDirection.from.z} x2={geometry.upDirection.to.x} y2={geometry.upDirection.to.z} stroke="#171717" strokeWidth=".03" markerEnd="url(#stair-up)"/></g>;
+  if (node.stairType === 'spiral') {
+    const geometry = buildSpiralStairPlanGeometry(node); if (!geometry) return null;
+    return <g onClick={() => onSelect(node.id)}><path d={geometry.footprintPath} fill="rgba(255,255,255,.08)" stroke="#171717" strokeWidth=".025" />{geometry.treadLines.map((line,index)=><line key={index} x1={line.start.x} y1={line.start.z} x2={line.end.x} y2={line.end.z} stroke="#262626" strokeWidth={index===geometry.treadLines.length-1?'.035':'.018'} />)}{geometry.railingPaths.map((path,index)=><polyline key={index} points={path.map(p=>`${p.x},${p.z}`).join(' ')} fill="none" stroke="#171717" strokeWidth=".025" />)}{geometry.centerColumn&&<circle cx={geometry.centerColumn.x} cy={geometry.centerColumn.z} r={Math.max(geometry.innerRadius*.18,.06)} fill="#d6d3d1" stroke="#171717" strokeWidth=".02"/>}<line x1={geometry.upDirection.from.x} y1={geometry.upDirection.from.z} x2={geometry.upDirection.to.x} y2={geometry.upDirection.to.z} stroke="#171717" strokeWidth=".03" markerEnd="url(#stair-up)"/></g>;
+  }
+  if (node.stairType === 'curved') {
+    const geometry = buildCurvedStairPlanGeometry(node); if (!geometry) return null;
+    return <g onClick={() => onSelect(node.id)}><path d={geometry.footprintPath} fill="rgba(255,255,255,.08)" stroke="#171717" strokeWidth=".025" />{geometry.treadLines.map((line,index)=><line key={index} x1={line.start.x} y1={line.start.z} x2={line.end.x} y2={line.end.z} stroke="#262626" strokeWidth={index===0 || index===geometry.treadLines.length-1?'.03':'.018'} />)}<line x1={geometry.upDirection.from.x} y1={geometry.upDirection.from.z} x2={geometry.upDirection.to.x} y2={geometry.upDirection.to.z} stroke="#171717" strokeWidth=".03" markerEnd="url(#stair-up)"/></g>;
+  }
+  const geometry = buildStraightStairPlanGeometry(node, nodes); if (!geometry) return null;
+  return <g onClick={() => onSelect(node.id)}>{geometry.segments.map((segment) => <g key={segment.node.id}><polygon points={segment.polygon.map((point) => `${point.x},${point.z}`).join(' ')} fill="rgba(255,255,255,.08)" stroke="#171717" strokeWidth=".025" />{segment.treads.map((tread, index) => <line key={index} x1={tread.start.x} y1={tread.start.z} x2={tread.end.x} y2={tread.end.z} stroke="#262626" strokeWidth=".018" />)}</g>)}<line x1={geometry.upDirection.from.x} y1={geometry.upDirection.from.z} x2={geometry.upDirection.to.x} y2={geometry.upDirection.to.z} stroke="#171717" strokeWidth=".03" fill="none" markerEnd="url(#stair-up)"/></g>;
 }
 function StairEntry({ node, onSelect }: { node: NodeData; onSelect: (id: string) => void }) {
   const entry = buildSpiralStairDestinationEntry(node); if (!entry) return null;
@@ -789,10 +808,12 @@ function Inspector({
   node,
   nodes,
   viewBox,
+  coverage,
 }: {
   node: NodeData | null;
   nodes: Record<string, NodeData>;
   viewBox: ViewBox;
+  coverage: ReturnType<typeof auditSceneCoverage>;
 }) {
   if (!node)
     return (
@@ -841,6 +862,10 @@ function Inspector({
   if (node.type === "shelf") {
     const shelf = resolveShelfData(node), transform = resolveShelfPlanTransform(node.id, nodes), matrix = shelfMatrix(node, nodes);
     return <section className="side-section inspector"><h2>选择了一个 Shelf</h2><pre>{JSON.stringify({ id: node.id, parentId: node.parentId, ancestorLevelId: transform.ancestorLevelId, style: shelf.style, position: node.position, rotation: node.rotation, width: shelf.width, depth: shelf.depth, height: shelf.height, thickness: shelf.thickness, rows: shelf.rows, columns: shelf.columns, withBack: shelf.withBack, withSides: shelf.withSides, withBottom: shelf.withBottom, bracketStyle: shelf.bracketStyle, children: node.children ?? [], resolvedWorldPosition: transform.status === 'ok' ? [transform.x, transform.z] : null, resolvedRotation: transform.status === 'ok' ? transform.rotationY : null, finalSvgMatrix: matrix, sourcePath: `nodes.${node.id}`, schemaDefaultFields: shelf.defaultFields }, null, 2)}</pre></section>;
+  }
+  if (node.type === "slab") {
+    const geometry = buildSlabPlanGeometry(node), ancestor = resolveAncestorLevelId(node.id, nodes), audit = coverage.entries.find((entry) => entry.nodeId === node.id);
+    return <section className="side-section inspector"><h2>选择了一个 Slab</h2><pre>{JSON.stringify({ id: node.id, parentId: node.parentId, ancestorLevelId: ancestor.levelId, polygon: node.polygon, holes: node.holes ?? [], holeMetadata: node.holeMetadata ?? [], elevation: node.elevation ?? .05, autoFromWalls: node.autoFromWalls ?? false, visible: node.visible, outerArea: geometry?.outerArea ?? null, holeArea: geometry?.holeArea ?? null, netArea: geometry?.netArea ?? null, coverageStatus: audit?.overallStatus ?? 'none', renderRegistration: audit?.actualRenderStatus ?? 'none' }, null, 2)}</pre></section>;
   }
   return (
     <section className="side-section inspector">

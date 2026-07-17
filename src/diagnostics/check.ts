@@ -15,6 +15,7 @@ export function inspectNodes(nodes: Record<string, NodeData>): Diagnostic[] {
       "ceiling",
       "shelf",
       "stair",
+      "stair-segment",
     ]);
   for (const node of Object.values(nodes)) {
     if (!known.has(node.type))

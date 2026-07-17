@@ -5,8 +5,8 @@ export const currentDemoSupportMatrix = Object.fromEntries(
 export const currentVariantSupport = {
   stair: {
     spiral: "supported-demo-symbol",
-    curved: "parsed-not-rendered",
-    straight: "parsed-not-rendered",
+    curved: "supported-pascal-equivalent",
+    straight: "supported-pascal-equivalent",
   },
   shelf: {
     "wall-shelf": "supported-pascal-equivalent",

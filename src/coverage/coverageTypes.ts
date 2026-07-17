@@ -3,6 +3,7 @@ export type VisibilityStrategy =
   | "standalone"
   | "hosted"
   | "parent-emitted"
+  | "view-specific"
   | "helper-view-specific"
   | "symbol-only"
   | "nonvisual"

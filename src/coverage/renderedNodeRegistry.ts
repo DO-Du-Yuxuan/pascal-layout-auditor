@@ -8,8 +8,9 @@ import {
   hasValidShelfFootprint,
   resolveShelfPlanTransform,
 } from "../geometry/shelf";
-import { buildSpiralStairPlanGeometry } from "../geometry/spiral-stair";
-export type RenderStrategy = "self" | "parent-emitted" | "intentionally-hidden";
+import { buildSlabPlanGeometry } from "../geometry/slab";
+import { hasStairPlanGeometry } from "../geometry/stairs";
+export type RenderStrategy = "self" | "parent-emitted" | "intentionally-hidden" | "hidden-by-layer-toggle";
 export type RenderRecord = {
   nodeId: string;
   kind: string;
@@ -40,7 +41,7 @@ const variant = (node: NodeData) =>
           ? node.style
           : undefined;
 /** Mirrors current Plan dispatch conditions; it does not build or alter SVG geometry. */
-export function collectCurrentRenderRegistry(nodes: Record<string, NodeData>) {
+export function collectCurrentRenderRegistry(nodes: Record<string, NodeData>, visibility: { slabs?: boolean; stairs?: boolean } = {}) {
   const registry = new RenderedNodeRegistry();
   for (const node of Object.values(nodes)) {
     if (
@@ -54,6 +55,14 @@ export function collectCurrentRenderRegistry(nodes: Record<string, NodeData>) {
         variant: variant(node),
         renderStrategy: "intentionally-hidden",
       });
+      continue;
+    }
+    if (node.type === "ceiling") {
+      registry.register({ nodeId: node.id, kind: node.type, renderStrategy: "intentionally-hidden" });
+      continue;
+    }
+    if (node.type === "slab" && buildSlabPlanGeometry(node)) {
+      registry.register({ nodeId: node.id, kind: node.type, renderStrategy: node.visible === false ? "intentionally-hidden" : visibility.slabs === false ? "hidden-by-layer-toggle" : "self" });
       continue;
     }
     if (
@@ -103,25 +112,21 @@ export function collectCurrentRenderRegistry(nodes: Record<string, NodeData>) {
         variant: variant(node),
         renderStrategy: "self",
       });
-    else if (
-      node.type === "stair" &&
-      node.stairType === "spiral" &&
-      buildSpiralStairPlanGeometry(node)
-    )
+    else if (node.type === "stair" && hasStairPlanGeometry(node, nodes))
       registry.register({
         nodeId: node.id,
         kind: node.type,
-        variant: "spiral",
-        renderStrategy: "self",
+        variant: node.stairType ?? "straight",
+        renderStrategy: visibility.stairs === false ? "hidden-by-layer-toggle" : "self",
       });
     else if (node.type === "stair-segment") {
       const parent = nodes[node.parentId ?? ""];
-      if (parent?.type === "stair" && parent.stairType !== "straight")
+      if (parent?.type === "stair" && hasStairPlanGeometry(parent, nodes))
         registry.register({
           nodeId: node.id,
           kind: node.type,
           emittedByNodeId: parent.id,
-          renderStrategy: "intentionally-hidden",
+          renderStrategy: visibility.stairs === false ? "hidden-by-layer-toggle" : "parent-emitted",
         });
     }
   }

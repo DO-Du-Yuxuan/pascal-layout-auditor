@@ -17,13 +17,13 @@ Status columns: `P` parse recognition, `R` raw preservation, `T` transform, `F` 
 | cabinet-module | `schema/nodes/cabinet.ts` / `cabinet/definition.ts` FP | base/tall; standard/corner-filler | hosted | partial | complete | none | none | partial/partial/none | cabinet parent frame |
 | item | `schema/nodes/item.ts` / `item/definition.ts` FP | asset source; attachTo; controls/effects | standalone, hosted | partial | complete | complete | exact accepted matrix | partial/complete/complete | upstream full Schema validation |
 | zone | `schema/nodes/zone.ts` / `zone/definition.ts` FP | color, metadata | standalone | partial | complete | n/a | Pascal-equivalent polygon | partial/partial/none | dedicated coverage tests |
-| slab | `schema/nodes/slab.ts` / `slab/definition.ts` FP | elevation; autoFromWalls | standalone | partial | complete | none | none | partial/partial/none | polygon/hole rendering |
-| ceiling | `schema/nodes/ceiling.ts` / `ceiling/definition.ts` FP | height; autoFromWalls | standalone | partial | complete | none | none | partial/partial/none | polygon/hole rendering |
+| slab | `schema/nodes/slab.ts` / `slab/definition.ts` FP | elevation; autoFromWalls; holes | standalone | partial | complete | n/a | Pascal-equivalent evenodd polygon | partial/partial/complete | raw polygon + hole rendering |
+| ceiling | `schema/nodes/ceiling.ts` / `ceiling/definition.ts` FP | height; autoFromWalls | view-specific | partial | complete | n/a | intentionally hidden | partial/partial/complete | Ceiling数据用于顶面/天花视图，不在当前平面布置图默认渲染。 |
 | roof | `schema/nodes/roof.ts` / `roof/definition.ts` FP | child segments | standalone | partial | complete | none | none | partial/partial/none | parent/segment composition |
 | roof-segment | `schema/nodes/roof-segment.ts` / `roof-segment/definition.ts` FP | hip, gable, shed, gambrel, dutch, mansard, flat | hosted, source-dependent | partial | complete | none | none | partial/partial/none | roof-local transform and shape |
 | shelf | `schema/nodes/shelf.ts` / `shelf/definition.ts` FP | wall-shelf, bookshelf, open-rack, cubby | standalone | partial | complete | complete | Pascal-equivalent | complete/complete/complete | upstream full Schema validation |
-| stair | `schema/nodes/stair.ts` / `stair/definition.ts` FP | straight, curved, spiral; railing/landing/opening | standalone, source-dependent | partial | complete | partial | spiral demo symbol only | partial/partial/partial | straight and curved absent |
-| stair-segment | `schema/nodes/stair-segment.ts` / `stair-segment/definition.ts` | stair/landing; front/left/right | parent-emitted | partial | complete | none | parent-dependent | partial/partial/none | straight parent emitter absent |
+| stair | `schema/nodes/stair.ts` / `stair/definition.ts` FP | straight, curved, spiral; railing/landing/opening | standalone, source-dependent | partial | complete | complete | Pascal-equivalent; accepted spiral symbol | partial/partial/complete | no Pascal editor handles/chrome |
+| stair-segment | `schema/nodes/stair-segment.ts` / `stair-segment/definition.ts` | stair/landing; front/left/right | parent-emitted | partial | complete | parent cumulative | parent-emitted | partial/partial/complete | emitted once by parent Stair |
 | scan | `schema/nodes/scan.ts` / `scan/definition.ts` | scale, opacity | helper-view-specific | partial | complete | n/a | intentionally hidden | partial/partial/none | optional scan mode |
 | guide | `schema/nodes/guide.ts` / `guide/definition.ts` | scale reference | helper-view-specific | partial | complete | n/a | intentionally hidden | partial/partial/none | optional guide mode |
 | spawn | `schema/nodes/spawn.ts` / `spawn/definition.ts` FP | rotation | helper-view-specific, symbol-only | partial | complete | n/a | intentionally hidden | partial/partial/none | optional helper layer |
@@ -54,7 +54,7 @@ Status columns: `P` parse recognition, `R` raw preservation, `T` transform, `F` 
 
 - Raw preservation is complete because `nodeSchema.passthrough()` and `parseProject()` copy every recognized object field; unknown plugin nodes are retained rather than rejected.
 - No kind has `schemaRecognition: complete`: this Demo does not import Pascal's fixed-commit `AnyNode` Zod union.
-- `complete` transform/test/diagnostic claims occur only for item, wall, or shelf and carry direct file/function/test evidence in the machine manifest.
+- `complete` transform/test claims carry direct file/function/test evidence in the machine manifest; slab and stair coverage is exercised by dedicated geometry tests.
 - The render registry mirrors current dispatch conditions without changing SVG geometry. Missing expected renderers become errors; containers and view-specific helpers do not.
 
 ## Recommended implementation batches

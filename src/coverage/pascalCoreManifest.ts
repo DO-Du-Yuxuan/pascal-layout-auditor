@@ -89,7 +89,7 @@ const strategies: Record<BuiltinKind, VisibilityStrategy[]> = {
   item: ["standalone", "hosted"],
   zone: ["standalone"],
   slab: ["standalone"],
-  ceiling: ["standalone"],
+  ceiling: ["view-specific"],
   roof: ["standalone"],
   ["roof-segment"]: ["hosted", "source-dependent"],
   shelf: ["standalone"],
@@ -883,26 +883,43 @@ const demo = (kind: BuiltinKind): DemoSupport => {
     return {
       ...base,
       levelResolution: "complete",
-      transformResolution: "partial",
-      floorplanRendering: "demo-custom-symbol",
-      testCoverage: "partial",
+      transformResolution: "complete",
+      floorplanRendering: "pascal-equivalent",
+      testCoverage: "complete",
       overallStatus: "partially-supported",
       evidence: {
-        files: ["src/geometry/spiral-stair.ts", "src/main.tsx"],
-        functions: ["buildSpiralStairPlanGeometry", "Stair"],
-        tests: ["src/geometry/spiral-stair.test.ts"],
+        files: ["src/geometry/spiral-stair.ts", "src/geometry/stairs.ts", "src/main.tsx"],
+        functions: ["buildSpiralStairPlanGeometry", "buildStraightStairPlanGeometry", "buildCurvedStairPlanGeometry", "Stair"],
+        tests: ["src/geometry/spiral-stair.test.ts", "src/geometry/stairs.test.ts"],
       },
     };
   if (kind === "stair-segment")
     return {
       ...base,
       floorplanRendering: "parent-emitted",
-      overallStatus: "partially-supported",
+      overallStatus: "parsed-parent-emitted",
       evidence: {
-        files: ["src/main.tsx", "src/coverage/renderedNodeRegistry.ts"],
-        functions: ["Stair", "collectCurrentRenderRegistry"],
-        tests: ["src/coverage/coverage.test.ts"],
+        files: ["src/geometry/stairs.ts", "src/main.tsx", "src/coverage/renderedNodeRegistry.ts"],
+        functions: ["buildStraightStairPlanGeometry", "Stair", "collectCurrentRenderRegistry"],
+        tests: ["src/geometry/stairs.test.ts", "src/coverage/coverage.test.ts"],
       },
+    };
+  if (kind === "slab")
+    return {
+      ...base,
+      levelResolution: "complete",
+      transformResolution: "not-applicable",
+      floorplanRendering: "pascal-equivalent",
+      testCoverage: "complete",
+      overallStatus: "supported-pascal-equivalent",
+      evidence: { files: ["src/geometry/slab.ts", "src/main.tsx"], functions: ["buildSlabPlanGeometry", "Slab"], tests: ["src/geometry/slab.test.ts", "src/coverage/coverage.test.ts"] },
+    };
+  if (kind === "ceiling")
+    return {
+      ...base,
+      floorplanRendering: "intentionally-hidden",
+      overallStatus: "parsed-intentionally-hidden",
+      evidence: { files: ["src/coverage/auditSceneCoverage.ts", "src/coverage/renderedNodeRegistry.ts"], functions: ["auditSceneCoverage", "collectCurrentRenderRegistry"], tests: ["src/coverage/coverage.test.ts"] },
     };
   if (kind === "zone")
     return {
