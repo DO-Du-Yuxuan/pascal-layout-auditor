@@ -274,7 +274,7 @@ function CanvasPanel({
   levels: NodeData[];
   visibility: Visibility;
   selectedId: string | null;
-  onSelect: (id: string) => void;
+  onSelect: (id: string | null) => void;
   onUpdate: (id: number, u: Partial<CanvasState>) => void;
   onRemove: (id: number) => void;
   canRemove: boolean;
@@ -414,7 +414,7 @@ function Plan({
   setViewBox: (v: ViewBox) => void;
   visibility: Visibility;
   selectedId: string | null;
-  onSelect: (id: string) => void;
+  onSelect: (id: string | null) => void;
 }) {
   const drag = useRef<{ x: number; y: number; box: ViewBox } | null>(null),
     rendered = objectsOnLevel(nodes, levelId),
@@ -482,6 +482,7 @@ function Plan({
           width={viewBox.width}
           height={viewBox.height}
           fill="#f7f8f5"
+          onClick={() => onSelect(null)}
         />
         <g transform={`rotate(${rotation} ${cx} ${cz})`}>
           {visibility.slabs && rendered.filter((n) => n.type === "slab" && n.visible !== false).map((n) => <Slab key={n.id} node={n} selected={selectedId === n.id} onSelect={onSelect} />)}
