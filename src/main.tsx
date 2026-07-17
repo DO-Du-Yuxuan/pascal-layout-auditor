@@ -18,6 +18,7 @@ import {
 } from "./geometry/transform";
 import { inspectNodes } from "./diagnostics/check";
 import { buildExperimentalWalls, Wall as PascalWall } from "./geometry/walls";
+import { hasValidShelfFootprint, resolveShelfData, resolveShelfPlanTransform, shelfCorners, shelfDividerXs, shelfMatrix } from "./geometry/shelf";
 
 type Visibility = {
   images: boolean;
@@ -27,7 +28,7 @@ type Visibility = {
   names: boolean;
   zones: boolean;
   walls: boolean;
-  experimentalWalls: boolean;
+  shelves: boolean;
   openings: boolean;
 };
 type CanvasState = {
@@ -44,7 +45,7 @@ const visibilityDefault: Visibility = {
   names: false,
   zones: true,
   walls: true,
-  experimentalWalls: false,
+  shelves: true,
   openings: true,
 };
 const emptyView: ViewBox = { minX: -5, minZ: -5, width: 10, height: 10 };
@@ -168,8 +169,8 @@ function App() {
                 names: "家具名称",
                 zones: "Zone",
                 walls: "墙体",
-                experimentalWalls: "精确墙体（实验）",
                 openings: "门窗",
+                shelves: "Shelf",
               }).map(([key, label]) => (
                 <label key={key}>
                   <input
@@ -346,10 +347,11 @@ function computeViewBox(
   levelId: string,
 ): ViewBox {
   const points: { x: number; z: number }[] = [];
-  for (const node of objectsOnLevel(nodes, levelId)) {
+  const rendered = objectsOnLevel(nodes, levelId), exactWallById = new Map(buildExperimentalWalls(rendered.filter((node) => node.type === 'wall') as PascalWall[]).map((wall) => [wall.wallId, wall]));
+  for (const node of rendered) {
     if (node.type === "wall") {
-      for (const point of [node.start, node.end])
-        if (Array.isArray(point)) points.push({ x: point[0], z: point[1] });
+      const exact = exactWallById.get(node.id);
+      if (exact?.validation.valid) points.push(...exact.footprint.map((point) => ({ x: point.x, z: point.y })));
     } else if (
       (node.type === "zone" ||
         node.type === "slab" ||
@@ -373,6 +375,8 @@ function computeViewBox(
             z: transform.z + dimensions.depth / 2,
           },
         );
+    } else if (node.type === "shelf") {
+      points.push(...shelfCorners(node, nodes));
     }
   }
   return zoomExtents(points, 1);
@@ -400,7 +404,7 @@ function Plan({
     rendered = objectsOnLevel(nodes, levelId),
     items = rendered.filter((n) => n.type === "item"),
     wallNodes = rendered.filter((n) => n.type === "wall") as PascalWall[],
-    experimentalWalls = useMemo(
+    exactWalls = useMemo(
       () => buildExperimentalWalls(wallNodes),
       [wallNodes],
     ),
@@ -466,23 +470,18 @@ function Plan({
               .filter((n) => n.type === "zone")
               .map((n) => <Polygon key={n.id} node={n} />)}
           {visibility.walls &&
-            (visibility.experimentalWalls ? experimentalWalls : wallNodes).map((n: any) => (
+            exactWalls.map((n) => (
                 <Wall
-                  key={visibility.experimentalWalls ? n.wallId : n.id}
-                  node={visibility.experimentalWalls ? nodes[n.wallId] : n}
-                  footprint={
-                    visibility.experimentalWalls ? n.footprint : undefined
-                  }
-                  valid={
-                    visibility.experimentalWalls ? n.validation.valid : true
-                  }
-                  diagnosticCodes={
-                    visibility.experimentalWalls ? n.validation.codes : undefined
-                  }
-                  selected={selectedId === (visibility.experimentalWalls ? n.wallId : n.id)}
+                  key={n.wallId}
+                  node={nodes[n.wallId]}
+                  footprint={n.footprint}
+                  valid={n.validation.valid}
+                  diagnosticCodes={n.validation.codes}
+                  selected={selectedId === n.wallId}
                   onSelect={onSelect}
                 />
               ))}
+          {visibility.shelves && rendered.filter((n) => n.type === "shelf").map((n) => <Shelf key={n.id} node={n} nodes={nodes} selected={selectedId === n.id} onSelect={onSelect} />)}
           {visibility.openings &&
             rendered
               .filter((n) => n.type === "door" || n.type === "window")
@@ -604,18 +603,15 @@ function Wall({
         <circle cx={node.start[0]} cy={node.start[1]} r=".12" fill="#d95446" />
       </g>
     );
-  return (
-    <line
-      x1={node.start[0]}
-      y1={node.start[1]}
-      x2={node.end[0]}
-      y2={node.end[1]}
-      stroke={selected ? "#e75c3c" : "#303a3b"}
-      strokeWidth={selected ? 0.14 : 0.1}
-      strokeLinecap="square"
-      onClick={() => onSelect(node.id)}
-    />
-  );
+  return null;
+}
+function Shelf({ node, nodes, selected, onSelect }: { node: NodeData; nodes: Record<string, NodeData>; selected: boolean; onSelect: (id: string) => void }) {
+  const data = resolveShelfData(node), matrix = shelfMatrix(node, nodes);
+  if (!matrix || !hasValidShelfFootprint(node)) return null;
+  return <g transform={svgMatrixString(matrix)} onClick={() => onSelect(node.id)} className="shelf">
+    <rect x={-data.width / 2} y={-data.depth / 2} width={data.width} height={data.depth} fill="#d6d3d1" stroke={selected ? "#e75c3c" : "#1f2937"} strokeWidth={selected ? ".045" : ".015"} opacity=".9" />
+    {shelfDividerXs(data).map((x) => <line key={x} x1={x} x2={x} y1={-data.depth / 2 + data.thickness} y2={data.depth / 2 - data.thickness} stroke="#1f2937" strokeWidth=".012" opacity=".7" />)}
+  </g>;
 }
 function Opening({
   node,
@@ -831,6 +827,10 @@ function Inspector({
       </section>
     );
   }
+  if (node.type === "shelf") {
+    const shelf = resolveShelfData(node), transform = resolveShelfPlanTransform(node.id, nodes), matrix = shelfMatrix(node, nodes);
+    return <section className="side-section inspector"><h2>选择了一个 Shelf</h2><pre>{JSON.stringify({ id: node.id, parentId: node.parentId, ancestorLevelId: transform.ancestorLevelId, style: shelf.style, position: node.position, rotation: node.rotation, width: shelf.width, depth: shelf.depth, height: shelf.height, thickness: shelf.thickness, rows: shelf.rows, columns: shelf.columns, withBack: shelf.withBack, withSides: shelf.withSides, withBottom: shelf.withBottom, bracketStyle: shelf.bracketStyle, children: node.children ?? [], resolvedWorldPosition: transform.status === 'ok' ? [transform.x, transform.z] : null, resolvedRotation: transform.status === 'ok' ? transform.rotationY : null, finalSvgMatrix: matrix, sourcePath: `nodes.${node.id}`, schemaDefaultFields: shelf.defaultFields }, null, 2)}</pre></section>;
+  }
   return (
     <section className="side-section inspector">
       <h2>{node.name || node.id}</h2>
@@ -841,6 +841,7 @@ function Inspector({
 function Stats({ nodes }: { nodes: Record<string, NodeData> }) {
   const c = (type: string) =>
     Object.values(nodes).filter((n) => n.type === type).length;
+  const shelves = Object.values(nodes).filter((n) => n.type === "shelf"), invalidShelves = shelves.filter((s) => !hasValidShelfFootprint(s)), parentIssueShelves = shelves.filter((s) => resolveShelfPlanTransform(s.id, nodes).status === 'error'), styles = shelves.reduce<Record<string, number>>((counts, shelf) => { const style = resolveShelfData(shelf).style; counts[style] = (counts[style] || 0) + 1; return counts; }, {});
   return (
     <section className="side-section">
       <h2>文件统计</h2>
@@ -857,12 +858,16 @@ function Stats({ nodes }: { nodes: Record<string, NodeData> }) {
         <span>
           Item<b>{c("item")}</b>
         </span>
+        <span>Shelf<b>{shelves.length}</b></span>
+        <span>无效 Shelf<b>{invalidShelves.length}</b></span>
+        <span>父级异常 Shelf<b>{parentIssueShelves.length}</b></span>
+        {Object.entries(styles).map(([style, count]) => <span key={style}>{style}<b>{count}</b></span>)}
       </div>
     </section>
   );
 }
 function transformDiagnostics(nodes: Record<string, NodeData>): Diagnostic[] {
-  return Object.values(nodes)
+  const itemDiagnostics = Object.values(nodes)
     .filter((n) => n.type === "item")
     .flatMap((node) => {
       const r = resolveItemPlanTransform(node.id, nodes);
@@ -877,6 +882,15 @@ function transformDiagnostics(nodes: Record<string, NodeData>): Diagnostic[] {
           ]
         : [];
     });
+  const shelfDiagnostics = Object.values(nodes).filter((node) => node.type === 'shelf').flatMap((node) => {
+    const transform = resolveShelfPlanTransform(node.id, nodes), data = resolveShelfData(node), diagnostics: Diagnostic[] = [];
+    if (!hasValidShelfFootprint(node)) diagnostics.push({ severity: 'error', code: 'invalid_shelf_dimensions', message: 'Shelf width/depth 无效；未绘制虚假占地', nodeId: node.id, sourcePath: `nodes.${node.id}` });
+    if (node.rows !== undefined && (!Number.isInteger(node.rows) || node.rows < 1 || node.rows > 8)) diagnostics.push({ severity: 'error', code: 'invalid_shelf_rows', message: 'Shelf rows 必须为 1–8 的整数', nodeId: node.id, sourcePath: `nodes.${node.id}.rows` });
+    if (node.columns !== undefined && (!Number.isInteger(node.columns) || node.columns < 1 || node.columns > 6)) diagnostics.push({ severity: 'error', code: 'invalid_shelf_columns', message: 'Shelf columns 必须为 1–6 的整数', nodeId: node.id, sourcePath: `nodes.${node.id}.columns` });
+    if (transform.status === 'error') diagnostics.push({ severity: 'error', code: transform.error === 'parent_cycle' ? 'shelf_parent_cycle' : transform.error === 'missing_parent' ? 'missing_shelf_parent' : 'unsupported_shelf_parent_transform', message: '无法确定 Shelf 的楼层坐标', nodeId: node.id, sourcePath: `nodes.${node.id}.parentId` });
+    void data; return diagnostics;
+  });
+  return [...itemDiagnostics, ...shelfDiagnostics];
 }
 function Diagnostics({ diagnostics }: { diagnostics: Diagnostic[] }) {
   return (

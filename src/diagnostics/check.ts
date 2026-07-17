@@ -25,18 +25,6 @@ export function inspectNodes(nodes: Record<string, NodeData>): Diagnostic[] {
         nodeId: node.id,
         sourcePath: `nodes.${node.id}.type`,
       });
-    if (
-      node.type === "wall" &&
-      Number.isFinite(node.curveOffset) &&
-      Math.abs(node.curveOffset) > 1e-6
-    )
-      diagnostics.push({
-        severity: "warning",
-        code: "simplified_curved_wall",
-        message: "当前 Demo 将曲墙按 start-end 直线显示",
-        nodeId: node.id,
-        sourcePath: `nodes.${node.id}.curveOffset`,
-      });
     if (node.type !== "item") continue;
     if (!validDimensions(node))
       diagnostics.push({
