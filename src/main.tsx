@@ -420,6 +420,7 @@ function Plan({
   const drag = useRef<{ x: number; y: number; box: ViewBox } | null>(null),
     rendered = objectsOnLevel(nodes, levelId),
     items = rendered.filter((n) => n.type === "item"),
+    zones = rendered.filter((n) => n.type === "zone"),
     wallNodes = rendered.filter((n) => n.type === "wall") as PascalWall[],
     exactWalls = useMemo(
       () => buildExperimentalWalls(wallNodes),
@@ -487,9 +488,7 @@ function Plan({
         <g transform={`rotate(${rotation} ${cx} ${cz})`}>
           {visibility.slabs && rendered.filter((n) => n.type === "slab" && n.visible !== false).map((n) => <Slab key={n.id} node={n} selected={selectedId === n.id} onSelect={onSelect} />)}
           {visibility.zones &&
-            rendered
-              .filter((n) => n.type === "zone")
-              .map((n) => <Polygon key={n.id} node={n} />)}
+            zones.map((n) => <Polygon key={n.id} node={n} />)}
           {visibility.walls &&
             exactWalls.map((n) => (
                 <Wall
@@ -532,6 +531,7 @@ function Plan({
               onSelect={onSelect}
             />
           ))}
+          {visibility.zones && zones.map((n) => <ZoneLabel key={`zone-label-${n.id}`} node={n} />)}
         </g>
       </svg>
       <Compass rotation={rotation} />
@@ -553,39 +553,15 @@ function Compass({ rotation }: { rotation: number }) {
   );
 }
 function Polygon({ node }: { node: NodeData }) {
-  const polygon = zonePoints(node), label = zoneLabelPoint(node), color = zoneColor(node);
+  const polygon = zonePoints(node), color = zoneColor(node);
   if (polygon.length < 3) return null;
   const points = polygon.map((point) => `${point.x},${point.z}`).join(" ");
-  return (
-    <g>
-      <polygon
-        points={points}
-        fill={color}
-        fillOpacity=".12"
-        stroke={color}
-        strokeOpacity=".32"
-        strokeWidth=".03"
-      />
-      {label && (
-        <text
-          x={label.x}
-          y={label.z}
-          className="zone-label"
-          fontSize=".22"
-          fontWeight="700"
-          textAnchor="middle"
-          dominantBaseline="middle"
-          style={{ fill: color }}
-          stroke="#ffffff"
-          strokeWidth=".035"
-          strokeOpacity=".9"
-          paintOrder="stroke"
-        >
-          {node.name || "Zone"}
-        </text>
-      )}
-    </g>
-  );
+  return <polygon points={points} fill={color} fillOpacity=".12" stroke={color} strokeOpacity=".32" strokeWidth=".03" />;
+}
+function ZoneLabel({ node }: { node: NodeData }) {
+  const label = zoneLabelPoint(node), color = zoneColor(node);
+  if (!label) return null;
+  return <text x={label.x} y={label.z} className="zone-label" fontSize=".22" fontWeight="700" textAnchor="middle" dominantBaseline="middle" style={{ fill: color }} stroke="#ffffff" strokeWidth=".035" strokeOpacity=".9" paintOrder="stroke" pointerEvents="none">{node.name || "Zone"}</text>;
 }
 function Slab({ node, selected, onSelect }: { node: NodeData; selected: boolean; onSelect: (id: string) => void }) {
   const geometry = buildSlabPlanGeometry(node);
