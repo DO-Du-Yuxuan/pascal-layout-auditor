@@ -19,6 +19,7 @@ import {
 import { inspectNodes } from "./diagnostics/check";
 import { buildExperimentalWalls, Wall as PascalWall } from "./geometry/walls";
 import { hasValidShelfFootprint, resolveShelfData, resolveShelfPlanTransform, shelfCorners, shelfDividerXs, shelfMatrix } from "./geometry/shelf";
+import { buildSpiralStairPlanGeometry, spiralStairCorners, spiralStairLevelStatus } from "./geometry/spiral-stair";
 
 type Visibility = {
   images: boolean;
@@ -29,6 +30,7 @@ type Visibility = {
   zones: boolean;
   walls: boolean;
   shelves: boolean;
+  stairs: boolean;
   openings: boolean;
 };
 type CanvasState = {
@@ -46,6 +48,7 @@ const visibilityDefault: Visibility = {
   zones: true,
   walls: true,
   shelves: true,
+  stairs: true,
   openings: true,
 };
 const emptyView: ViewBox = { minX: -5, minZ: -5, width: 10, height: 10 };
@@ -171,6 +174,7 @@ function App() {
                 walls: "墙体",
                 openings: "门窗",
                 shelves: "Shelf",
+                stairs: "楼梯",
               }).map(([key, label]) => (
                 <label key={key}>
                   <input
@@ -377,6 +381,8 @@ function computeViewBox(
         );
     } else if (node.type === "shelf") {
       points.push(...shelfCorners(node, nodes));
+    } else if (node.type === "stair" && node.stairType === 'spiral') {
+      points.push(...spiralStairCorners(node));
     }
   }
   return zoomExtents(points, 1);
@@ -456,6 +462,7 @@ function Plan({
           >
             <path d="M0,0 L.18,.09 L0,.18z" fill="#e75c3c" />
           </marker>
+          <marker id="stair-up" markerWidth=".18" markerHeight=".18" refX=".16" refY=".09" orient="auto"><path d="M0,0 L.18,.09 L0,.18z" fill="#171717" /></marker>
         </defs>
         <rect
           x={viewBox.minX}
@@ -494,7 +501,7 @@ function Plan({
                   onSelect={onSelect}
                 />
               ))}
-          {rendered
+          {visibility.stairs && rendered
             .filter((n) => n.type === "stair")
             .map((n) => (
               <Stair key={n.id} node={n} onSelect={onSelect} />
@@ -671,18 +678,9 @@ function Stair({
   node: NodeData;
   onSelect: (id: string) => void;
 }) {
-  const p = Array.isArray(node.position) ? node.position : [0, 0, 0];
-  return (
-    <text
-      x={p[0]}
-      y={p[2] ?? 0}
-      fontSize=".25"
-      fill="#59635f"
-      onClick={() => onSelect(node.id)}
-    >
-      STAIR
-    </text>
-  );
+  if (node.stairType !== 'spiral') return null;
+  const geometry = buildSpiralStairPlanGeometry(node); if (!geometry) return null;
+  return <g onClick={() => onSelect(node.id)}><path d={geometry.footprintPath} fill="rgba(255,255,255,.08)" stroke="#171717" strokeWidth=".025" />{geometry.treadLines.map((line,index)=><line key={index} x1={line.start.x} y1={line.start.z} x2={line.end.x} y2={line.end.z} stroke="#262626" strokeWidth={index===geometry.treadLines.length-1?'.035':'.018'} />)}{geometry.railingPaths.map((path,index)=><polyline key={index} points={path.map(p=>`${p.x},${p.z}`).join(' ')} fill="none" stroke="#171717" strokeWidth=".025" />)}{geometry.centerColumn&&<circle cx={geometry.centerColumn.x} cy={geometry.centerColumn.z} r={Math.max(geometry.innerRadius*.18,.06)} fill="#d6d3d1" stroke="#171717" strokeWidth=".02"/>}<line x1={geometry.upDirection.from.x} y1={geometry.upDirection.from.z} x2={geometry.upDirection.to.x} y2={geometry.upDirection.to.z} stroke="#171717" strokeWidth=".03" markerEnd="url(#stair-up)"/></g>;
 }
 function Furniture({
   node,
