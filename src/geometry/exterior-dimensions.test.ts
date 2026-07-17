@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import referenceProject from "../../sample-data/9618b316-3eab-4fcf-9a21-0f7316479968.json";
-import { buildExteriorDimensions, dimensionOverlayBounds, formatDimensionMetersToMillimeters, POSITION_TOLERANCE_M, signedRingArea, uprightDimensionAngle } from "./exterior-dimensions";
+import { buildAlignedDimensionDisplay, buildExteriorDimensions, dimensionDisplayGeometry, dimensionOverlayBounds, formatDimensionMetersToMillimeters, POSITION_TOLERANCE_M, signedRingArea, uprightDimensionAngle } from "./exterior-dimensions";
 
 const level = { id: "level", type: "level" };
 const wall = (id: string, start: [number, number], end: [number, number], extra: any = {}) => ({ id, type: "wall", parentId: "level", start, end, thickness: .2, ...extra });
@@ -34,6 +34,9 @@ describe("straight exterior dimensions", () => {
     const report = buildExteriorDimensions({ level, ...lWalls } as any, "level");
     expect(report.summary.exteriorRunCount).toBe(6);
     expect(report.summary.overallDimensionCount).toBe(6);
+    const display = buildAlignedDimensionDisplay(report), localOverall = display.filter((item) => item.dimensionLayer === "overall" && !item.runId.includes("-frame-")), frameOverall = display.filter((item) => item.runId.includes("-frame-"));
+    expect(localOverall).toHaveLength(2);
+    expect(frameOverall).toHaveLength(4);
   });
   it("does not turn an internal wall into an exterior run", () => {
     const report = buildExteriorDimensions({ level, ...rectangle(), inner: wall("inner", [4, 0], [4, 6]) } as any, "level");
@@ -89,6 +92,17 @@ describe("straight exterior dimensions", () => {
     const nodes = { level, ...rectangle() } as any, before = JSON.stringify(nodes), report = buildExteriorDimensions(nodes, "level");
     expect(dimensionOverlayBounds(report).length).toBeGreaterThan(0);
     expect(JSON.stringify(nodes)).toBe(before);
+  });
+  it("replaces envelope-run totals with one complete overall dimension per component side", () => {
+    const report = buildExteriorDimensions({ level, ...rectangle() } as any, "level"), display = buildAlignedDimensionDisplay(report), overall = display.filter((item) => item.dimensionLayer === "overall");
+    expect(overall).toHaveLength(4);
+    expect(overall.every((item) => item.runId.includes("-frame-"))).toBe(true);
+    expect(overall.filter((item) => Math.abs(item.direction[0]) > .99).every((item) => item.valueMeters === 8.2)).toBe(true);
+    expect(overall.filter((item) => Math.abs(item.direction[1]) > .99).every((item) => item.valueMeters === 6.2)).toBe(true);
+  });
+  it("keeps recessed concave dimensions local instead of projecting them onto the frame", () => {
+    const lWalls = { a: wall("a", [0, 0], [8, 0]), b: wall("b", [8, 0], [8, 3]), c: wall("c", [8, 3], [4, 3]), d: wall("d", [4, 3], [4, 6]), e: wall("e", [4, 6], [0, 6]), f: wall("f", [0, 6], [0, 0]) }, report = buildExteriorDimensions({ level, ...lWalls, insetWindow: { id: "insetWindow", type: "window", parentId: "c", wallId: "c", position: [2, 1, 0], width: 1 } } as any, "level"), segment = buildAlignedDimensionDisplay(report).find((item) => item.dimensionLayer === "inner-chain" && item.sourceOpeningIds.includes("insetWindow"))!;
+    expect(dimensionDisplayGeometry(report, segment).faceStart).toEqual(segment.start);
   });
   it("builds generic reference reports without unresolved union boundaries or source mutation", () => {
     const nodes = referenceProject.nodes as any, before = JSON.stringify(nodes), levels = Object.values(nodes).filter((node: any) => node.type === "level") as any[];

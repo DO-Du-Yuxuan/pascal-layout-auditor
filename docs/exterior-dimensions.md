@@ -26,7 +26,8 @@ The local implementation intentionally derives the outward side from each union 
 6. Reject runs contributed by curved Walls; never substitute a chord dimension.
 7. Resolve Door and Window spans from their host Wall, wall-local `position[0]`, and schema `width`.
 8. Project corners, wall junctions, and opening edges onto each straight run.
-9. Generate the inner continuous chain and one outer overall dimension per run.
+9. Generate the inner continuous chain and retain one mathematically traceable overall dimension per run.
+10. For display, align envelope-facing horizontal/vertical chains by component side and replace their repeated run totals with one complete component width/height line on that side. Recessed concave runs and diagonal runs keep their local dimensions, so projection never changes their meaning.
 
 Internal values remain metres. Labels use `Math.round(metres * 1000)` and have no suffix.
 
@@ -39,3 +40,5 @@ Internal values remain metres. Labels use `Math.round(metres * 1000)` and have n
 Door and Window nodes provide the host Wall ID, wall-local center, width, and therefore reliable left/right physical opening spans required by dimensioning. The current plan renderer does not yet subtract Window openings, and its Door opening visualization is not a wall boolean cut. This does not change dimension values because the dimensions use Pascal opening data and the physical exterior Wall face, not rendered pixels. Invalid or off-run opening spans are excluded with diagnostics.
 
 Curved exterior dimensions, interior dimensions, room clear dimensions, manual annotation movement, and JSON write-back are outside this feature.
+
+The aligned two-tier presentation is intentionally separate from the measurement report: `buildExteriorDimensions` retains every run and value for audit and chain-sum checks, while `buildAlignedDimensionDisplay` only arranges those measurements for drawing. Component-frame overall values are derived from the exterior ring bounds; they never overwrite run values.

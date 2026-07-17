@@ -15,6 +15,7 @@ export type DimensionWitnessPoint = { id: string; point: Point; scalarOnRun: num
 export type ExteriorBoundarySegment = { start: Point; end: Point; sourceWallIds: string[] };
 export type ExteriorDimensionRun = { id: string; levelId: string; componentId: string; start: Point; end: Point; direction: Point; outwardNormal: Point; sourceWallIds: string[]; boundarySegments: ExteriorBoundarySegment[]; lengthMeters: number };
 export type DimensionSegment = { id: string; chainId: string; levelId: string; componentId: string; runId: string; dimensionLayer: "inner-chain" | "overall"; start: Point; end: Point; valueMeters: number; displayMillimeters: string; direction: Point; outwardNormal: Point; sourceStart: DimensionWitnessPoint; sourceEnd: DimensionWitnessPoint; sourceWallIds: string[]; sourceOpeningIds: string[]; sourcePaths: string[]; method: "projected-world-distance"; unionAlgorithm: "polygon-clipping.union" };
+export type DimensionDisplayGeometry = { edgeStart: Point; edgeEnd: Point; faceStart: Point; faceEnd: Point };
 export type ExteriorRing = { componentId: string; ringId: string; points: Point[]; signedArea: number; winding: "clockwise" | "counterclockwise"; sourceWallIds: string[] };
 export type ExteriorDimensionReport = { levelId: string; rings: ExteriorRing[]; runs: ExteriorDimensionRun[]; dimensions: DimensionSegment[]; diagnostics: Diagnostic[]; summary: { exteriorComponentCount: number; exteriorRingCount: number; interiorRingCount: number; exteriorRunCount: number; innerChainCount: number; innerSegmentCount: number; overallDimensionCount: number; exteriorDoorCount: number; exteriorWindowCount: number; excludedInteriorOpeningCount: number; curvedExteriorRunCount: number; unresolvedRunCount: number; chainSumMismatchCount: number; dimensionTextUnresolvedCollisionCount: number } };
 
@@ -121,4 +122,41 @@ export function buildExteriorDimensions(nodes: Record<string, NodeData>, levelId
 function witness(run: ExteriorDimensionRun, scalarOnRun: number, sourceKind: DimensionWitnessPoint["sourceKind"], sourceNodeId: string): DimensionWitnessPoint { return { id: `${run.id}-${sourceKind}-${sourceNodeId}-${scalarOnRun.toFixed(6)}`, point: add(run.start, run.direction, scalarOnRun), scalarOnRun, sourceNodeId, sourceKind, sourcePath: sourceNodeId === run.id ? "derived.exterior-run" : `nodes.${sourceNodeId}` }; }
 function dimension(run: ExteriorDimensionRun, start: DimensionWitnessPoint, end: DimensionWitnessPoint, layer: DimensionSegment["dimensionLayer"], index: number): DimensionSegment { const valueMeters = Math.abs(end.scalarOnRun - start.scalarOnRun); return { id: `${run.id}-${layer}-${index}`, chainId: `${run.id}-${layer}`, levelId: run.levelId, componentId: run.componentId, runId: run.id, dimensionLayer: layer, start: start.point, end: end.point, valueMeters, displayMillimeters: formatDimensionMetersToMillimeters(valueMeters), direction: run.direction, outwardNormal: run.outwardNormal, sourceStart: start, sourceEnd: end, sourceWallIds: run.sourceWallIds, sourceOpeningIds: unique([start, end].filter((item) => item.sourceKind.startsWith("door") || item.sourceKind.startsWith("window")).map((item) => item.sourceNodeId)), sourcePaths: unique([start.sourcePath, end.sourcePath]), method: "projected-world-distance", unionAlgorithm: "polygon-clipping.union" }; }
 
-export function dimensionOverlayBounds(report: ExteriorDimensionReport) { return report.dimensions.flatMap((item) => { const offset = item.dimensionLayer === "inner-chain" ? INNER_CHAIN_OFFSET_M : OVERALL_CHAIN_OFFSET_M, start = add(item.start, item.outwardNormal, offset), end = add(item.end, item.outwardNormal, offset), textPadding = Math.max(.25, item.displayMillimeters.length * .055); return [item.start, item.end, add(start, item.outwardNormal, EXTENSION_OVERSHOOT_M), add(end, item.outwardNormal, EXTENSION_OVERSHOOT_M), add(start, item.direction, -textPadding), add(end, item.direction, textPadding)].map((point) => ({ x: point[0], z: point[1] })); }); }
+const axis = (direction: Point): "horizontal" | "vertical" | "diagonal" => Math.abs(direction[0]) >= 1 - COLLINEAR_TOLERANCE ? "horizontal" : Math.abs(direction[1]) >= 1 - COLLINEAR_TOLERANCE ? "vertical" : "diagonal";
+const ringBounds = (ring: ExteriorRing) => ({ minX: Math.min(...ring.points.map((point) => point[0])), maxX: Math.max(...ring.points.map((point) => point[0])), minY: Math.min(...ring.points.map((point) => point[1])), maxY: Math.max(...ring.points.map((point) => point[1])) });
+const runOnComponentEnvelope = (run: ExteriorDimensionRun, ring: ExteriorRing) => { const bounds = ringBounds(ring); if (axis(run.direction) === "horizontal") return Math.abs(run.start[1] - (run.outwardNormal[1] < 0 ? bounds.minY : bounds.maxY)) <= POSITION_TOLERANCE_M; if (axis(run.direction) === "vertical") return Math.abs(run.start[0] - (run.outwardNormal[0] < 0 ? bounds.minX : bounds.maxX)) <= POSITION_TOLERANCE_M; return false; };
+
+function componentFrameDimension(report: ExteriorDimensionReport, ring: ExteriorRing, side: "top" | "right" | "bottom" | "left"): DimensionSegment {
+  const bounds = ringBounds(ring), horizontal = side === "top" || side === "bottom", start: Point = side === "top" ? [bounds.minX, bounds.minY] : side === "right" ? [bounds.maxX, bounds.minY] : side === "bottom" ? [bounds.maxX, bounds.maxY] : [bounds.minX, bounds.maxY], end: Point = side === "top" ? [bounds.maxX, bounds.minY] : side === "right" ? [bounds.maxX, bounds.maxY] : side === "bottom" ? [bounds.minX, bounds.maxY] : [bounds.minX, bounds.minY], direction = normalize(sub(end, start)), outwardNormal: Point = side === "top" ? [0, -1] : side === "right" ? [1, 0] : side === "bottom" ? [0, 1] : [-1, 0], valueMeters = horizontal ? bounds.maxX - bounds.minX : bounds.maxY - bounds.minY, runId = `${ring.componentId}-frame-${side}`;
+  const sourceStart: DimensionWitnessPoint = { id: `${runId}-start`, point: start, scalarOnRun: 0, sourceNodeId: ring.ringId, sourceKind: "exterior-run-start", sourcePath: "derived.exterior-ring.bounds" }, sourceEnd: DimensionWitnessPoint = { id: `${runId}-end`, point: end, scalarOnRun: valueMeters, sourceNodeId: ring.ringId, sourceKind: "exterior-run-end", sourcePath: "derived.exterior-ring.bounds" };
+  return { id: `${runId}-overall`, chainId: `${runId}-overall`, levelId: report.levelId, componentId: ring.componentId, runId, dimensionLayer: "overall", start, end, valueMeters, displayMillimeters: formatDimensionMetersToMillimeters(valueMeters), direction, outwardNormal, sourceStart, sourceEnd, sourceWallIds: ring.sourceWallIds, sourceOpeningIds: [], sourcePaths: ["derived.exterior-ring.bounds"], method: "projected-world-distance", unionAlgorithm: "polygon-clipping.union" };
+}
+
+export function buildAlignedDimensionDisplay(report: ExteriorDimensionReport): DimensionSegment[] {
+  const displayed = report.dimensions.filter((item) => {
+    if (item.dimensionLayer === "inner-chain" || axis(item.direction) === "diagonal") return true;
+    const run = report.runs.find((entry) => entry.id === item.runId), ring = report.rings.find((entry) => entry.componentId === item.componentId);
+    return !run || !ring || !runOnComponentEnvelope(run, ring);
+  });
+  for (const ring of report.rings) {
+    const componentRuns = report.runs.filter((run) => run.componentId === ring.componentId);
+    const sides = new Set<"top" | "right" | "bottom" | "left">();
+    for (const run of componentRuns) {
+      if (!runOnComponentEnvelope(run, ring)) continue;
+      if (axis(run.direction) === "horizontal") sides.add(run.outwardNormal[1] < 0 ? "top" : "bottom");
+      if (axis(run.direction) === "vertical") sides.add(run.outwardNormal[0] < 0 ? "left" : "right");
+    }
+    for (const side of sides) displayed.push(componentFrameDimension(report, ring, side));
+  }
+  return displayed;
+}
+
+export function dimensionDisplayGeometry(report: ExteriorDimensionReport, item: DimensionSegment): DimensionDisplayGeometry {
+  const ring = report.rings.find((entry) => entry.componentId === item.componentId), run = report.runs.find((entry) => entry.id === item.runId);
+  if (!ring || !run || !runOnComponentEnvelope(run, ring) || item.dimensionLayer !== "inner-chain" || axis(item.direction) === "diagonal") return { edgeStart: item.start, edgeEnd: item.end, faceStart: item.start, faceEnd: item.end };
+  const bounds = ringBounds(ring);
+  if (axis(item.direction) === "horizontal") { const y = item.outwardNormal[1] < 0 ? bounds.minY : bounds.maxY; return { edgeStart: item.start, edgeEnd: item.end, faceStart: [item.start[0], y], faceEnd: [item.end[0], y] }; }
+  const x = item.outwardNormal[0] < 0 ? bounds.minX : bounds.maxX; return { edgeStart: item.start, edgeEnd: item.end, faceStart: [x, item.start[1]], faceEnd: [x, item.end[1]] };
+}
+
+export function dimensionOverlayBounds(report: ExteriorDimensionReport) { return buildAlignedDimensionDisplay(report).flatMap((item) => { const geometry = dimensionDisplayGeometry(report, item), offset = item.dimensionLayer === "inner-chain" ? INNER_CHAIN_OFFSET_M : OVERALL_CHAIN_OFFSET_M, start = add(geometry.faceStart, item.outwardNormal, offset), end = add(geometry.faceEnd, item.outwardNormal, offset), textPadding = Math.max(.25, item.displayMillimeters.length * .055); return [geometry.edgeStart, geometry.edgeEnd, add(start, item.outwardNormal, EXTENSION_OVERSHOOT_M), add(end, item.outwardNormal, EXTENSION_OVERSHOOT_M), add(start, item.direction, -textPadding), add(end, item.direction, textPadding)].map((point) => ({ x: point[0], z: point[1] })); }); }
