@@ -222,18 +222,16 @@ function App() {
               ))}
             </div>
           </section>
-          <Stats nodes={nodes} />
           <Inspector
             node={selectedId ? nodes[selectedId] : null}
             nodes={nodes}
-            viewBox={canvases[0]?.viewBox || emptyView}
             coverage={coverage}
             dimension={selectedDimension}
             manualMeasurement={manualMeasurements.find((item) => item.id === selectedManualId) ?? null}
             measurementUnit={measurementUnit}
           />
+          <Stats nodes={nodes} />
           <Diagnostics diagnostics={diagnostics} />
-          <CoverageReport coverage={coverage} />
         </aside>
         <section className="canvas-workspace">
           <div className="canvas-workspace-head">
@@ -612,7 +610,7 @@ function Plan({
         <g ref={sceneRef} style={{ transform: `rotate(${rotation}deg)`, transformOrigin: `${cx}px ${cz}px`, transition: "transform 240ms cubic-bezier(.2,.8,.2,1)" }}>
           {visibility.slabs && rendered.filter((n) => n.type === "slab" && n.visible !== false).map((n) => <Slab key={n.id} node={n} selected={selectedId === n.id} onSelect={onSelect} />)}
           {visibility.zones &&
-            zones.map((n) => <Polygon key={n.id} node={n} />)}
+            zones.map((n) => <Polygon key={n.id} node={n} onSelect={onSelect} />)}
           {visibility.walls &&
             exactWalls.map((n) => (
                 <Wall
@@ -681,11 +679,11 @@ function Compass({ rotation }: { rotation: number }) {
     </div>
   );
 }
-function Polygon({ node }: { node: NodeData }) {
+function Polygon({ node, onSelect }: { node: NodeData; onSelect: (id: string) => void }) {
   const polygon = zonePoints(node), color = zoneColor(node);
   if (polygon.length < 3) return null;
   const points = polygon.map((point) => `${point.x},${point.z}`).join(" ");
-  return <polygon points={points} fill={color} fillOpacity=".12" stroke={color} strokeOpacity=".32" strokeWidth=".03" />;
+  return <polygon data-selectable points={points} fill={color} fillOpacity=".12" stroke={color} strokeOpacity=".32" strokeWidth=".03" onClick={() => onSelect(node.id)} />;
 }
 function ZoneLabel({ node, viewRotation }: { node: NodeData; viewRotation: number }) {
   const label = zoneLabelPoint(node), color = zoneColor(node);
@@ -1002,7 +1000,6 @@ function Furniture({
 function Inspector({
   node,
   nodes,
-  viewBox,
   coverage,
   dimension,
   manualMeasurement,
@@ -1010,14 +1007,13 @@ function Inspector({
 }: {
   node: NodeData | null;
   nodes: Record<string, NodeData>;
-  viewBox: ViewBox;
   coverage: ReturnType<typeof auditSceneCoverage>;
   dimension: DimensionSegment | null;
   manualMeasurement: ManualMeasurement | null;
   measurementUnit: MeasurementUnit;
 }) {
-  if (manualMeasurement) { const geometry = buildManualMeasurementGeometry(manualMeasurement.start.point, manualMeasurement.end.point, manualMeasurement.mode); return <section className="side-section inspector"><h2>手动尺寸</h2><pre>{JSON.stringify({ id: manualMeasurement.id, levelId: manualMeasurement.levelId, mode: manualMeasurement.mode, startWorld: manualMeasurement.start.point, endWorld: manualMeasurement.end.point, startSnap: manualMeasurement.start, endSnap: manualMeasurement.end, valueMeters: geometry.valueMeters, displayedValue: formatMeasurement(geometry.valueMeters, measurementUnit), unit: measurementUnit, geometryMethod: manualMeasurement.mode === "aligned" ? "euclidean-world-distance" : `${manualMeasurement.mode}-world-projection`, persistence: "derived-overlay / current imported project session" }, null, 2)}</pre></section>; }
-  if (dimension) return <section className="side-section inspector"><h2>外围尺寸</h2><pre>{JSON.stringify({ chainId: dimension.chainId, segmentId: dimension.id, levelId: dimension.levelId, componentId: dimension.componentId, runId: dimension.runId, dimensionLayer: dimension.dimensionLayer, startWorld: dimension.start, endWorld: dimension.end, valueMeters: dimension.valueMeters, displayedValue: formatMeasurement(dimension.valueMeters, measurementUnit), displayMillimeters: dimension.displayMillimeters, roundingDifferenceMeters: Number(dimension.displayMillimeters) / 1000 - dimension.valueMeters, direction: dimension.direction, outwardNormal: dimension.outwardNormal, sourceWallIds: dimension.sourceWallIds, sourceOpeningIds: dimension.sourceOpeningIds, sourceStart: dimension.sourceStart, sourceEnd: dimension.sourceEnd, sourcePaths: dimension.sourcePaths, exteriorContourSource: "union of formal physical wall footprints / outer rings only", unionAlgorithm: dimension.unionAlgorithm, geometryMethod: dimension.method, registry: "derived-overlay-feature" }, null, 2)}</pre></section>;
+  if (manualMeasurement) { const geometry = buildManualMeasurementGeometry(manualMeasurement.start.point, manualMeasurement.end.point, manualMeasurement.mode); return <InspectorSection title="手动尺寸" rows={[["数值", formatMeasurement(geometry.valueMeters, measurementUnit)], ["模式", manualMeasurement.mode], ["楼层", levelName(manualMeasurement.levelId, nodes)], ["起点吸附", manualMeasurement.start.kind], ["终点吸附", manualMeasurement.end.kind]]} />; }
+  if (dimension) return <InspectorSection title="外围尺寸" rows={[["数值", formatMeasurement(dimension.valueMeters, measurementUnit)], ["标注层", dimension.dimensionLayer], ["楼层", levelName(dimension.levelId, nodes)], ["来源墙体", String(dimension.sourceWallIds.length)], ["来源洞口", String(dimension.sourceOpeningIds.length)]]} />;
   if (!node)
     return (
       <section className="side-section inspector">
@@ -1025,35 +1021,33 @@ function Inspector({
         <p>点击对象查看原始字段与派生几何。</p>
       </section>
     );
-  if (node.type === "item") return <ItemInspector node={node} nodes={nodes} viewBox={viewBox} unit={measurementUnit} />;
+  if (node.type === "item") return <ItemInspector node={node} nodes={nodes} unit={measurementUnit} />;
   if (node.type === "shelf") {
-    const shelf = resolveShelfData(node), transform = resolveShelfPlanTransform(node.id, nodes), matrix = shelfMatrix(node, nodes);
-    return <section className="side-section inspector"><h2>选择了一个 Shelf</h2><pre>{JSON.stringify({ id: node.id, parentId: node.parentId, ancestorLevelId: transform.ancestorLevelId, style: shelf.style, position: node.position, rotation: node.rotation, displayedDimensions: { width: formatPanelLength(shelf.width, measurementUnit), depth: formatPanelLength(shelf.depth, measurementUnit), height: formatPanelLength(shelf.height, measurementUnit), thickness: formatPanelLength(shelf.thickness, measurementUnit) }, widthMeters: shelf.width, depthMeters: shelf.depth, heightMeters: shelf.height, thicknessMeters: shelf.thickness, rows: shelf.rows, columns: shelf.columns, withBack: shelf.withBack, withSides: shelf.withSides, withBottom: shelf.withBottom, bracketStyle: shelf.bracketStyle, children: node.children ?? [], resolvedWorldPosition: transform.status === 'ok' ? [transform.x, transform.z] : null, resolvedRotation: transform.status === 'ok' ? transform.rotationY : null, finalSvgMatrix: matrix, sourcePath: `nodes.${node.id}`, schemaDefaultFields: shelf.defaultFields }, null, 2)}</pre></section>;
+    const shelf = resolveShelfData(node);
+    return <InspectorSection title={node.name || "Shelf"} node={node} rows={baseNodeRows(node, nodes).concat([["尺寸 W/D/H", `${formatPanelLength(shelf.width, measurementUnit)} / ${formatPanelLength(shelf.depth, measurementUnit)} / ${formatPanelLength(shelf.height, measurementUnit)}`], ["分格", `${shelf.rows} 行 × ${shelf.columns} 列`], ["样式", shelf.style], ["子 Item", String((node.children ?? []).length)]])} />;
   }
   if (node.type === "slab") {
-    const geometry = buildSlabPlanGeometry(node), ancestor = resolveAncestorLevelId(node.id, nodes), audit = coverage.entries.find((entry) => entry.nodeId === node.id);
-    return <section className="side-section inspector"><h2>选择了一个 Slab</h2><pre>{JSON.stringify({ id: node.id, parentId: node.parentId, ancestorLevelId: ancestor.levelId, polygon: node.polygon, holes: node.holes ?? [], holeMetadata: node.holeMetadata ?? [], displayedElevation: formatPanelLength(node.elevation ?? .05, measurementUnit), elevationMeters: node.elevation ?? .05, autoFromWalls: node.autoFromWalls ?? false, visible: node.visible, displayedArea: geometry ? { outer: formatArea(geometry.outerArea, measurementUnit), holes: formatArea(geometry.holeArea, measurementUnit), net: formatArea(geometry.netArea, measurementUnit) } : null, areaSquareMeters: geometry ? { outer: geometry.outerArea, holes: geometry.holeArea, net: geometry.netArea } : null, coverageStatus: audit?.overallStatus ?? 'none', renderRegistration: audit?.actualRenderStatus ?? 'none' }, null, 2)}</pre></section>;
+    const geometry = buildSlabPlanGeometry(node), audit = coverage.entries.find((entry) => entry.nodeId === node.id);
+    return <InspectorSection title={node.name || "Slab（楼地面）"} node={node} rows={baseNodeRows(node, nodes).concat([["净面积", geometry ? formatArea(geometry.netArea, measurementUnit) : "未解析"], ["标高", formatPanelLength(node.elevation ?? .05, measurementUnit)], ["轮廓 / 洞", `${node.polygon?.length ?? 0} / ${node.holes?.length ?? 0}`], ["渲染状态", audit?.actualRenderStatus ?? "—"]])} />;
   }
-  return (
-    <section className="side-section inspector">
-      <h2>{node.name || node.id}</h2>
-      <pre>{JSON.stringify(node, null, 2)}</pre>
-    </section>
-  );
+  return <GenericNodeInspector node={node} nodes={nodes} unit={measurementUnit} />;
 }
-function ItemInspector({ node, nodes, viewBox, unit }: { node: NodeData; nodes: Record<string, NodeData>; viewBox: ViewBox; unit: MeasurementUnit }) {
+function levelName(levelId: string | undefined, nodes: Record<string, NodeData>) { return levelId ? nodes[levelId]?.name || levelId : "未确定"; }
+function baseNodeRows(node: NodeData, nodes: Record<string, NodeData>): Array<[string, string]> { const ancestor = resolveAncestorLevelId(node.id, nodes); return [["类型", node.type], ["所属楼层", levelName(ancestor.levelId, nodes)], ["父节点", node.parentId ? nodes[node.parentId]?.name || nodes[node.parentId]?.type || node.parentId : "—"]]; }
+function InspectorSection({ title, rows, node }: { title: string; rows: Array<[string, string]>; node?: NodeData }) { return <section className="side-section inspector"><h2>{title}</h2><dl>{rows.map(([label, value]) => <React.Fragment key={label}><dt>{label}</dt><dd>{value}</dd></React.Fragment>)}</dl>{node && <details><summary>原始 JSON</summary><pre>{JSON.stringify(node, null, 2)}</pre></details>}</section>; }
+function ItemInspector({ node, nodes, unit }: { node: NodeData; nodes: Record<string, NodeData>; unit: MeasurementUnit }) {
   const dimensions = finalDimensions(node), transform = resolveItemPlanTransform(node.id, nodes), imageUrl = node.asset?.floorPlanUrl as string | undefined, cropEntry = useFloorplanImageCrop(imageUrl), placement = dimensions && cropEntry && !cropEntry.isFallback && cropEntry.cropWidth > 0 && cropEntry.cropHeight > 0 ? computeCropPlacement({ x: cropEntry.cropX, y: cropEntry.cropY, width: cropEntry.cropWidth, height: cropEntry.cropHeight }, dimensions.width, dimensions.depth) : null;
-  return <section className="side-section inspector">
-    <h2>{node.name || node.asset?.name || "家具"}</h2>
-    <dl>
-      <dt>尺寸 W/H/D</dt><dd>{dimensions ? `${formatPanelLength(dimensions.width, unit)} / ${formatPanelLength(dimensions.height, unit)} / ${formatPanelLength(dimensions.depth, unit)}` : "无效"}</dd>
-      <dt>位置 x/z</dt><dd>{transform.status === "ok" ? `${formatPanelLength(transform.x, unit)} / ${formatPanelLength(transform.z, unit)}` : "未解析"}</dd>
-      <dt>角度</dt><dd>{transform.status === "ok" ? `${normalizeDegrees(transform.rotationY)}°` : "—"}</dd>
-      <dt>所属楼层</dt><dd>{transform.ancestorLevelId || "未确定"}</dd>
-      <dt>画布范围</dt><dd>{`${formatPanelLength(viewBox.width, unit)} × ${formatPanelLength(viewBox.height, unit)}`}</dd>
-    </dl>
-    <pre>{JSON.stringify({ id: node.id, parentId: node.parentId, position: node.position, rotation: node.rotation, scale: node.scale, physicalDimensionsMeters: node.asset?.dimensions, floorPlanImageUrl: imageUrl ?? null, naturalImageWidth: cropEntry?.naturalWidth ?? null, naturalImageHeight: cropEntry?.naturalHeight ?? null, alphaThreshold: cropEntry?.alphaThreshold ?? ALPHA_THRESHOLD, cropX: cropEntry?.cropX ?? null, cropY: cropEntry?.cropY ?? null, cropWidth: cropEntry?.cropWidth ?? null, cropHeight: cropEntry?.cropHeight ?? null, cropApplied: Boolean(cropEntry && !cropEntry.isFallback && placement), cropFallbackReason: cropEntry?.fallbackReason ?? (imageUrl ? "loading" : "missing-url"), contentAspectRatio: placement?.contentAspectRatio ?? null, physicalAspectRatio: placement?.physicalAspectRatio ?? (dimensions ? dimensions.width / dimensions.depth : null), aspectDifferencePercent: placement?.aspectDifferencePercent ?? null, finalDrawWidth: placement?.drawWidth ?? dimensions?.width ?? null, finalDrawHeight: placement?.drawHeight ?? dimensions?.depth ?? null, drawOffsetX: placement?.offsetX ?? 0, drawOffsetY: placement?.offsetY ?? 0, scaleX: placement?.scaleX ?? null, scaleY: placement?.scaleY ?? null, uniformScaleApplied: placement?.uniformScaleApplied ?? false, fourEdgeFitApplied: Boolean(cropEntry && !cropEntry.isFallback && placement) }, null, 2)}</pre>
-  </section>;
+  const imageStatus = !imageUrl ? "无平面图图片" : !cropEntry ? "图片加载中" : cropEntry.isFallback ? `整图回退：${cropEntry.fallbackReason}` : "已加载并裁剪";
+  return <InspectorSection title={node.name || node.asset?.name || "家具"} node={node} rows={baseNodeRows(node, nodes).concat([["尺寸 W/H/D", dimensions ? `${formatPanelLength(dimensions.width, unit)} / ${formatPanelLength(dimensions.height, unit)} / ${formatPanelLength(dimensions.depth, unit)}` : "无效"], ["朝向", transform.status === "ok" ? `${normalizeDegrees(transform.rotationY)}°` : "未解析"], ["平面图", imageStatus], ["图片贴合", placement ? "四边贴合" : "—"]])} />;
+}
+function GenericNodeInspector({ node, nodes, unit }: { node: NodeData; nodes: Record<string, NodeData>; unit: MeasurementUnit }) {
+  const rows = baseNodeRows(node, nodes);
+  if (node.type === "level") rows.splice(1, 0, ["名称", node.name || "未命名"], ["子节点", String(Object.values(nodes).filter((candidate) => candidate.parentId === node.id).length)]);
+  if (node.type === "wall") { const length = Array.isArray(node.start) && Array.isArray(node.end) ? Math.hypot(node.end[0] - node.start[0], node.end[1] - node.start[1]) : null; rows.push(["长度", length === null ? "未解析" : formatPanelLength(length, unit)], ["墙厚", formatPanelLength(node.thickness ?? .1, unit)], ["几何", Number.isFinite(node.curveOffset) && node.curveOffset !== 0 ? "曲墙" : "直墙"]); }
+  if (node.type === "door" || node.type === "window") rows.push(["宿主墙", node.wallId ? nodes[node.wallId]?.name || "墙体" : "未关联"], ["尺寸 W/H", `${formatPanelLength(node.width ?? .9, unit)} / ${formatPanelLength(node.height ?? 2, unit)}`], ["类型", node.type === "door" ? node.doorType ?? "hinged" : node.windowType ?? "window"], ["开口", node.openingKind ?? "door/window"]);
+  if (node.type === "zone") { const points = zonePoints(node), area = Math.abs(points.reduce((sum, point, index) => { const next = points[(index + 1) % points.length]; return sum + point.x * next.z - point.z * next.x; }, 0) / 2); rows.push(["面积", points.length > 2 ? formatArea(area, unit) : "未解析"], ["轮廓点", String(points.length)]); }
+  if (node.type === "stair") rows.push(["楼梯类型", node.stairType ?? "straight"], ["宽度", Number.isFinite(node.width) ? formatPanelLength(node.width, unit) : "—"], ["级数", String(node.stepCount ?? node.steps?.length ?? "—")]);
+  return <InspectorSection title={node.name || node.type} node={node} rows={rows} />;
 }
 function Stats({ nodes }: { nodes: Record<string, NodeData> }) {
   const c = (type: string) =>
@@ -1112,17 +1106,16 @@ function transformDiagnostics(nodes: Record<string, NodeData>): Diagnostic[] {
 function Diagnostics({ diagnostics }: { diagnostics: Diagnostic[] }) {
   return (
     <section className="side-section diagnostics-panel">
-      <div className="side-heading">
-        <h2>诊断</h2>
-        <span className="pill">{diagnostics.length}</span>
-      </div>
-      {diagnostics.slice(0, 30).map((d, i) => (
-        <div className={`diag ${d.severity}`} key={`${d.code}-${i}`}>
-          <b>{d.code}</b>
-          <span>{d.message}</span>
-          <small>{d.nodeId || ""}</small>
-        </div>
-      ))}
+      <details>
+        <summary className="side-heading"><h2>诊断</h2><span className="pill">{diagnostics.length}</span></summary>
+        {diagnostics.slice(0, 30).map((d, i) => (
+          <div className={`diag ${d.severity}`} key={`${d.code}-${i}`}>
+            <b>{d.code}</b>
+            <span>{d.message}</span>
+            <small>{d.nodeId || ""}</small>
+          </div>
+        ))}
+      </details>
     </section>
   );
 }
