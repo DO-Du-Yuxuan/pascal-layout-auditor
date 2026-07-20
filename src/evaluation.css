@@ -1,0 +1,47 @@
+.evaluation-panel .side-heading { gap: 6px; }
+.evaluation-panel .side-heading button { padding: 4px 6px; }
+.evaluation-panel p { color: #64766b; font-size: 9px; line-height: 1.45; }
+.evaluation-overall { background: #eef2ed; border-radius: 5px; display: flex; font-size: 10px; justify-content: space-between; margin-top: 8px; padding: 7px; }
+.evaluation-overall.status-pass { background: #e7f4df; }
+.evaluation-overall.status-issue { background: #f9e5e1; }
+.evaluation-overall.status-unable_to_determine { background: #fff1d6; }
+.evaluation-counts { display: grid; gap: 4px; grid-template-columns: 1fr 1fr; margin: 6px 0; }
+.evaluation-counts span { background: #f2f4f1; border-radius: 3px; display: flex; font-size: 8px; justify-content: space-between; padding: 4px; }
+.evaluation-rule { background: #f5f6f4; border-left: 3px solid #90a198; margin-top: 5px; padding: 4px 5px; }
+.evaluation-rule.status-pass { border-color: #76a85d; }
+.evaluation-rule.status-issue { border-color: #d86756; }
+.evaluation-rule.status-unable_to_determine { border-color: #d8a449; }
+.evaluation-rule.active-evaluation-rule { box-shadow: 0 0 0 2px #e23d35; scroll-margin-block: 18px; }
+.evaluation-rule-heading { align-items: start; display: grid; font-size: 9px; gap: 6px; grid-template-columns: 1fr auto; }
+.evaluation-rule-heading strong { color: #263c31; font-size: 10px; line-height: 1.35; }
+.evaluation-rule-heading em { color: #68786f; font-style: normal; }
+.evaluation-rule details { margin-top: 5px; }
+.evaluation-rule details summary { color: #63756b; cursor: pointer; font-size: 8px; }
+.evaluation-rule small { display: block; font-size: 8px; line-height: 1.4; margin-top: 4px; word-break: break-all; }
+.evaluation-rule small b { color: #63756b; display: block; }
+.designer-guidance { display: grid; gap: 5px; }
+.designer-guidance span { color: #52645a; font-size: 8px; line-height: 1.45; }
+.designer-guidance span b { color: #31483d; display: block; font-size: 8px; }
+.designer-guidance .supplemental { background: #fff7e7; border-radius: 3px; padding: 4px; }
+.evaluation-card-meta { display: grid; gap: 4px; grid-template-columns: 1fr 1fr; margin-top: 6px; }
+.evaluation-card-meta span { background: #ecefeb; border-radius: 3px; color: #68786f; display: flex; font-size: 8px; justify-content: space-between; padding: 4px; }
+.evaluation-card-meta b { color: #31483d; }
+.evaluation-object-nav { background: #fff; border: 1px solid #dfe5de; border-radius: 4px; display: grid; gap: 5px; margin-top: 6px; padding: 5px; }
+.evaluation-object-label { color: #31483d; font-size: 9px; font-weight: 700; }
+.evaluation-object-nav div { align-items: center; display: flex; gap: 5px; justify-content: space-between; }
+.evaluation-object-nav div b { font: 8px "DM Mono"; }
+.evaluation-object-nav button { font-size: 8px; padding: 3px 5px; }
+.evaluation-object-nav .view-on-canvas { background: #263f3f; border-color: #263f3f; color: #fff; width: 100%; }
+.evaluation-focus-message { background: #fff1d6; border-left: 3px solid #d8a449; font-size: 9px; margin-top: 7px; padding: 6px; }
+.evaluation-error { background: #f9e5e1; border-left: 3px solid #d86756; display: grid; font-size: 9px; gap: 3px; margin-top: 7px; padding: 7px; }
+.evaluation-scene-dimmed { opacity: .28; }
+.evaluation-highlight-overlay { filter: drop-shadow(0 0 3px rgba(226,61,53,.42)); }
+.evaluation-highlight-overlay [data-evaluation-highlight] { cursor: pointer; pointer-events: all; }
+.evaluation-highlight-overlay .active { filter: drop-shadow(0 0 7px rgba(226,61,53,.92)); }
+.evaluation-highlight-legend { align-items: center; background: #fffffff0; border: 1px solid #d7ded7; border-radius: 4px; bottom: 7px; display: flex; flex-wrap: wrap; font-size: 8px; gap: 6px; left: 52px; max-width: calc(100% - 150px); padding: 4px 5px; position: absolute; z-index: 4; }
+.evaluation-highlight-legend span { align-items: center; display: flex; gap: 3px; }
+.evaluation-highlight-legend i { border-radius: 2px; display: inline-block; height: 7px; width: 10px; }
+.evaluation-highlight-legend i.primary { background: #e23d35; }
+.evaluation-highlight-legend i.related { background: #ed8b2c; }
+.evaluation-highlight-legend i.muted { background: #aeb7b1; }
+.evaluation-highlight-legend button { font-size: 8px; padding: 2px 4px; }

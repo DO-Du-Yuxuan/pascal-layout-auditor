@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import sampleText from "../sample-data/9618b316-3eab-4fcf-9a21-0f7316479968.json?raw";
 import "./styles.css";
+import "./evaluation.css";
 import { parseProject } from "./parser/parse";
 import { Diagnostic, NodeData, Parsed } from "./types";
 import {
@@ -28,6 +29,10 @@ import { buildAlignedDimensionDisplay, buildExteriorDimensions, DimensionSegment
 import { buildManualMeasurementGeometry, buildMeasurementSnapSegments, formatArea, formatMeasurement, ManualMeasurement, MeasurementMode, MeasurementSnap, MeasurementUnit, resolveMeasurementMode, snapMeasurementPoint } from "./geometry/manual-measurement";
 import { ALPHA_THRESHOLD, computeCropPlacement, floorplanImageCropDiagnostics, FloorplanImageCropCacheEntry, loadFloorplanImageCrop, peekFloorplanImageCrop, subscribeFloorplanImageCrop } from "./geometry/floorplan-image-crop";
 import { auditSceneCoverage } from "./coverage/auditSceneCoverage";
+import { buildEvaluationHandoff } from "./parser/evaluation-handoff";
+import { evaluateG1Foundation, EvaluationReport, RuleStatus } from "./evaluation/evaluate";
+import { designerRulePresentation, evaluationIssueTargets, EvaluationFocusTarget } from "./evaluation-ui/presentation";
+import { evaluationHighlightFor, evaluationHighlightRole, EvaluationHighlight, resolveEvaluationFocus } from "./evaluation-ui/focus";
 
 type Visibility = {
   images: boolean;
@@ -81,8 +86,13 @@ function App() {
     [measurementMode, setMeasurementMode] = useState<MeasurementMode>("off"),
     [measurementUnit, setMeasurementUnit] = useState<MeasurementUnit>("millimeters"),
     [imageCropRevision, setImageCropRevision] = useState(0),
+    [evaluationReport, setEvaluationReport] = useState<EvaluationReport | null>(null),
+    [evaluationError, setEvaluationError] = useState<string | null>(null),
+    [evaluationHighlights, setEvaluationHighlights] = useState<EvaluationHighlight[]>([]),
+    [activeEvaluationHighlight, setActiveEvaluationHighlight] = useState<EvaluationHighlight | null>(null),
+    [evaluationFocusMessage, setEvaluationFocusMessage] = useState<string | null>(null),
     [visibility, setVisibility] = useState(visibilityDefault);
-  const input = useRef<HTMLInputElement>(null), nextMeasurementId = useRef(1);
+  const input = useRef<HTMLInputElement>(null), nextMeasurementId = useRef(1), evaluationRuleElements = useRef<Record<string, HTMLElement | null>>({});
   const nodes = data?.nodes || {};
   const levels = Object.values(nodes).filter((n) => n.type === "level");
   useEffect(() => { const closeMeasurement = (event: KeyboardEvent) => { if (event.key === "Escape") setMeasurementMode("off"); }; window.addEventListener("keydown", closeMeasurement); return () => window.removeEventListener("keydown", closeMeasurement); }, []);
@@ -97,6 +107,11 @@ function App() {
       const first =
         Object.values(parsed.nodes).find((n) => n.type === "level")?.id || "";
       setData(parsed);
+      setEvaluationReport(null);
+      setEvaluationError(null);
+      setEvaluationHighlights([]);
+      setActiveEvaluationHighlight(null);
+      setEvaluationFocusMessage(null);
       setFile(name);
       setSelectedId(null);
       setSelectedDimension(null);
@@ -114,6 +129,11 @@ function App() {
       ]);
       setNextId(2);
     } catch {
+      setEvaluationReport(null);
+      setEvaluationError(null);
+      setEvaluationHighlights([]);
+      setActiveEvaluationHighlight(null);
+      setEvaluationFocusMessage(null);
       setData({
         nodes: {},
         raw: null,
@@ -163,6 +183,51 @@ function App() {
     const next = !visibility[key];
     setVisibility((current) => key === "images" ? { ...current, images: next, shelves: next } : key === "centers" ? { ...current, centers: next, axes: next } : { ...current, [key]: next });
     if (key === "dimensions") setCanvases((current) => current.map((canvas) => ({ ...canvas, viewBox: computeViewBox(nodes, canvas.levelId, next) })));
+  };
+  const runFoundationEvaluation = () => {
+    if (!data) return;
+    try {
+      const report = evaluateG1Foundation(buildEvaluationHandoff(data));
+      setEvaluationReport(report);
+      setEvaluationHighlights(evaluationIssueTargets(report.rules, nodes).map((target) => evaluationHighlightFor(target.ruleId, target, target.targetIndex)));
+      setActiveEvaluationHighlight(null);
+      setEvaluationError(null);
+      setEvaluationFocusMessage(null);
+    } catch (error) {
+      setEvaluationReport(null);
+      setEvaluationError(error instanceof Error ? error.message : "评价器发生未知错误");
+    }
+  };
+  const revealEvaluationRule = (ruleId: string) => {
+    window.setTimeout(() => evaluationRuleElements.current[ruleId]?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
+  };
+  const focusEvaluationTarget = (ruleId: string, target: EvaluationFocusTarget, targetIndex: number, revealRule = false) => {
+    const focus = resolveEvaluationFocus(nodes, target.primaryId);
+    setEvaluationFocusMessage(focus.renderable ? null : focus.reason ?? "该对象暂时无法在画布中显示。");
+    if (!focus.renderable || !focus.levelId || !focus.viewBox) { setActiveEvaluationHighlight(null); return; }
+    setActiveEvaluationHighlight(evaluationHighlightFor(ruleId, target, targetIndex));
+    if (revealRule) revealEvaluationRule(ruleId);
+    setSelectedId(target.primaryId);
+    setSelectedDimension(null);
+    setSelectedManualId(null);
+    setMeasurementMode("off");
+    const type = nodes[target.primaryId]?.type;
+    setVisibility((current) => ({ ...current, walls: type === "wall" || target.relatedIds.some((id) => nodes[id]?.type === "wall") ? true : current.walls, openings: type === "door" || type === "window" ? true : current.openings, stairs: type === "stair" ? true : current.stairs }));
+    setCanvases((current) => {
+      const matching = current.findIndex((canvas) => canvas.levelId === focus.levelId), targetCanvas = matching >= 0 ? matching : 0;
+      return current.map((canvas, index) => index === targetCanvas ? { ...canvas, levelId: focus.levelId!, viewBox: focus.viewBox! } : canvas);
+    });
+  };
+  const activateEvaluationHighlight = (highlight: EvaluationHighlight) => {
+    const rule = evaluationReport?.rules.find((item) => item.ruleId === highlight.ruleId);
+    const target = rule && designerRulePresentation(rule, nodes).targets[highlight.targetIndex];
+    if (target) focusEvaluationTarget(highlight.ruleId, target, highlight.targetIndex, true);
+  };
+  const selectCanvasObject = (id: string | null) => {
+    setSelectedId(id);
+    setSelectedDimension(null);
+    setSelectedManualId(null);
+    if (!id || !evaluationHighlights.some((highlight) => id === highlight.primaryId || highlight.relatedIds.includes(id))) { setEvaluationHighlights([]); setActiveEvaluationHighlight(null); }
   };
   return (
     <div className="app">
@@ -231,6 +296,7 @@ function App() {
             measurementUnit={measurementUnit}
           />
           <Stats nodes={nodes} />
+          <EvaluationPanel report={evaluationReport} nodes={nodes} error={evaluationError} focusMessage={evaluationFocusMessage} activeHighlight={activeEvaluationHighlight} disabled={!data || !Object.keys(nodes).length} onRun={runFoundationEvaluation} onFocus={focusEvaluationTarget} onRegisterRule={(ruleId, element) => { evaluationRuleElements.current[ruleId] = element; }} />
           <Diagnostics diagnostics={diagnostics} />
         </aside>
         <section className="canvas-workspace">
@@ -256,11 +322,15 @@ function App() {
                 levels={levels}
                 visibility={visibility}
                 selectedId={selectedId}
+                evaluationHighlights={evaluationHighlights}
+                activeEvaluationHighlight={activeEvaluationHighlight}
                 measurementMode={measurementMode}
                 measurementUnit={measurementUnit}
                 manualMeasurements={manualMeasurements.filter((item) => item.levelId === (canvas.levelId || levels[0]?.id || ""))}
                 selectedManualId={selectedManualId}
-                onSelect={(id) => { setSelectedId(id); setSelectedDimension(null); setSelectedManualId(null); }}
+                onSelect={selectCanvasObject}
+                onClearEvaluationHighlight={() => { setEvaluationHighlights([]); setActiveEvaluationHighlight(null); setEvaluationFocusMessage(null); }}
+                onActivateEvaluationHighlight={activateEvaluationHighlight}
                 onSelectDimension={(dimension) => { setSelectedId(null); setSelectedDimension(dimension); setSelectedManualId(null); }}
                 onCreateMeasurement={(measurement) => { const created = { ...measurement, id: `measure-${nextMeasurementId.current++}`, createdAt: Date.now() }; setManualMeasurements((current) => [...current, created]); setSelectedId(null); setSelectedDimension(null); setSelectedManualId(created.id); }}
                 onSelectManual={(id) => { setSelectedId(null); setSelectedDimension(null); setSelectedManualId(id); }}
@@ -282,7 +352,11 @@ function CanvasPanel({
   levels,
   visibility,
   selectedId,
+  evaluationHighlights,
+  activeEvaluationHighlight,
   onSelect,
+  onClearEvaluationHighlight,
+  onActivateEvaluationHighlight,
   onSelectDimension,
   measurementMode,
   measurementUnit,
@@ -300,7 +374,11 @@ function CanvasPanel({
   levels: NodeData[];
   visibility: Visibility;
   selectedId: string | null;
+  evaluationHighlights: EvaluationHighlight[];
+  activeEvaluationHighlight: EvaluationHighlight | null;
   onSelect: (id: string | null) => void;
+  onClearEvaluationHighlight: () => void;
+  onActivateEvaluationHighlight: (highlight: EvaluationHighlight) => void;
   onSelectDimension: (dimension: DimensionSegment) => void;
   measurementMode: MeasurementMode;
   measurementUnit: MeasurementUnit;
@@ -378,7 +456,11 @@ function CanvasPanel({
         setViewBox={(viewBox) => onUpdate(canvas.id, { viewBox })}
         visibility={visibility}
         selectedId={selectedId}
+        evaluationHighlights={evaluationHighlights}
+        activeEvaluationHighlight={activeEvaluationHighlight}
         onSelect={onSelect}
+        onClearEvaluationHighlight={onClearEvaluationHighlight}
+        onActivateEvaluationHighlight={onActivateEvaluationHighlight}
         onSelectDimension={onSelectDimension}
         measurementMode={measurementMode}
         measurementUnit={measurementUnit}
@@ -449,7 +531,11 @@ function Plan({
   setViewBox,
   visibility,
   selectedId,
+  evaluationHighlights,
+  activeEvaluationHighlight,
   onSelect,
+  onClearEvaluationHighlight,
+  onActivateEvaluationHighlight,
   onSelectDimension,
   measurementMode,
   measurementUnit,
@@ -466,7 +552,11 @@ function Plan({
   setViewBox: (v: ViewBox) => void;
   visibility: Visibility;
   selectedId: string | null;
+  evaluationHighlights: EvaluationHighlight[];
+  activeEvaluationHighlight: EvaluationHighlight | null;
   onSelect: (id: string | null) => void;
+  onClearEvaluationHighlight: () => void;
+  onActivateEvaluationHighlight: (highlight: EvaluationHighlight) => void;
   onSelectDimension: (dimension: DimensionSegment) => void;
   measurementMode: MeasurementMode;
   measurementUnit: MeasurementUnit;
@@ -493,6 +583,7 @@ function Plan({
     cx = viewBox.minX + viewBox.width / 2,
     cz = viewBox.minZ + viewBox.height / 2,
     vb = `${viewBox.minX} ${viewBox.minZ} ${viewBox.width} ${viewBox.height}`;
+  const highlightsOnLevel = evaluationHighlights.filter((highlight) => resolveAncestorLevelId(highlight.primaryId, nodes).levelId === levelId);
   const snapSegments = useMemo(() => buildMeasurementSnapSegments(nodes, levelId), [nodes, levelId]);
   const activeMeasurementMode = resolveMeasurementMode(measurementStart?.point ?? null, measurementHover?.point ?? null, orthogonalLock);
   useEffect(() => { setMeasurementStart(null); setMeasurementHover(null); setOrthogonalLock(false); }, [measurementMode, levelId]);
@@ -608,6 +699,7 @@ function Plan({
           fill="#f7f8f5"
         />
         <g ref={sceneRef} style={{ transform: `rotate(${rotation}deg)`, transformOrigin: `${cx}px ${cz}px`, transition: "transform 240ms cubic-bezier(.2,.8,.2,1)" }}>
+          <g className={highlightsOnLevel.length ? "evaluation-scene-dimmed" : undefined}>
           {visibility.slabs && rendered.filter((n) => n.type === "slab" && n.visible !== false).map((n) => <Slab key={n.id} node={n} selected={selectedId === n.id} onSelect={onSelect} />)}
           {visibility.zones &&
             zones.map((n) => <Polygon key={n.id} node={n} onSelect={onSelect} />)}
@@ -658,13 +750,44 @@ function Plan({
           {visibility.dimensions && <ExteriorDimensions report={exteriorDimensions} viewRotation={rotation} unit={measurementUnit} onSelect={onSelectDimension} />}
           <ManualMeasurements measurements={manualMeasurements} preview={measurementMode !== "off" && measurementStart && measurementHover ? { mode: activeMeasurementMode, start: measurementStart, end: measurementHover } : null} unit={measurementUnit} viewRotation={rotation} selectedId={selectedManualId} onSelect={onSelectManual} onDelete={onDeleteManual} />
           {measurementMode !== "off" && measurementHover && <SnapIndicator snap={measurementHover} active={Boolean(measurementStart)} />}
+          </g>
+          {highlightsOnLevel.length > 0 && <EvaluationHighlightOverlay highlights={highlightsOnLevel} activeHighlight={activeEvaluationHighlight} nodes={nodes} exactWalls={exactWalls} onActivate={onActivateEvaluationHighlight} />}
         </g>
       </svg>
       {measurementMode !== "off" && <div className="measure-hint">{measurementStart ? `${orthogonalLock ? activeMeasurementMode === "horizontal" ? "水平正交已开启" : "垂直正交已开启" : "自由对齐"} · 点击第二点 · Shift 切换正交 · Esc 退出` : `${orthogonalLock ? "正交已开启" : "正交已关闭"} · 点击第一点 · Shift 切换正交 · Esc 退出`}</div>}
       <Compass rotation={rotation} />
+      {highlightsOnLevel.length > 0 && <div className="evaluation-highlight-legend"><span><i className="primary" />问题对象（点击红框查看说明）</span><span><i className="related" />关联对象</span><span><i className="muted" />其他对象</span><button onClick={onClearEvaluationHighlight}>关闭高亮</button></div>}
       <div className="legend">{formatPanelLength(viewBox.width, measurementUnit)} × {formatPanelLength(viewBox.height, measurementUnit)}</div>
     </div>
   );
+}
+function EvaluationHighlightOverlay({ highlights, activeHighlight, nodes, exactWalls, onActivate }: { highlights: EvaluationHighlight[]; activeHighlight: EvaluationHighlight | null; nodes: Record<string, NodeData>; exactWalls: ReturnType<typeof buildExperimentalWalls>; onActivate: (highlight: EvaluationHighlight) => void }) {
+  const wallById = new Map(exactWalls.map((wall) => [wall.wallId, wall]));
+  const marked = new Map<string, { highlight: EvaluationHighlight; role: "primary" | "related" }>();
+  highlights.forEach((highlight) => [highlight.primaryId, ...highlight.relatedIds].forEach((id) => {
+    const role = evaluationHighlightRole(highlight, id);
+    if (role && (!marked.has(id) || role === "primary")) marked.set(id, { highlight, role });
+  }));
+  return <g className="evaluation-highlight-overlay">{[...marked.entries()].map(([id, marker]) => {
+    const { highlight, role } = marker, node = nodes[id];
+    if (!node || !role) return null;
+    const color = role === "primary" ? "#e23d35" : "#ed8b2c", fillOpacity = role === "primary" ? .28 : .18, active = activeHighlight?.primaryId === highlight.primaryId;
+    const activate = (event: React.MouseEvent<SVGElement>) => { event.preventDefault(); event.stopPropagation(); onActivate(highlight); };
+    if (node.type === "wall") {
+      const wall = wallById.get(id);
+      if (wall?.validation.valid && wall.footprint.length >= 3) return <polygon key={id} className={active ? "active" : undefined} data-evaluation-highlight={id} data-highlight-role={role} points={wall.footprint.map((point) => `${point.x},${point.y}`).join(" ")} fill={color} fillOpacity={fillOpacity} stroke={color} strokeWidth="3" vectorEffect="non-scaling-stroke" onClick={activate} />;
+      if (Array.isArray(node.start) && node.start.length >= 2 && node.start.slice(0, 2).every(Number.isFinite)) return <g key={id} className={active ? "active" : undefined} data-evaluation-highlight={id} data-highlight-role={role} onClick={activate}><circle cx={node.start[0]} cy={node.start[1]} r=".24" fill={color} fillOpacity={fillOpacity} stroke={color} strokeWidth="3" vectorEffect="non-scaling-stroke"/><line x1={node.start[0] - .32} y1={node.start[1]} x2={node.start[0] + .32} y2={node.start[1]} stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke"/><line x1={node.start[0]} y1={node.start[1] - .32} x2={node.start[0]} y2={node.start[1] + .32} stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke"/></g>;
+    }
+    if (node.type === "door" || node.type === "window") {
+      const transform = resolveWallOpeningTransform(node, nodes), width = Number(node.width);
+      if (transform && Number.isFinite(width) && width > 0) return <g key={id} className={active ? "active" : undefined} data-evaluation-highlight={id} data-highlight-role={role} transform={`translate(${transform.x} ${transform.z}) rotate(${transform.rotationY * 180 / Math.PI})`} onClick={activate}><rect x={-width / 2} y="-.16" width={width} height=".32" fill={color} fillOpacity={fillOpacity} stroke={color} strokeWidth="3" vectorEffect="non-scaling-stroke" /></g>;
+    }
+    if (node.type === "stair") {
+      const corners = stairCorners(node, nodes);
+      if (corners.length >= 3) return <polygon key={id} className={active ? "active" : undefined} data-evaluation-highlight={id} data-highlight-role={role} points={corners.map((point) => `${point.x},${point.z}`).join(" ")} fill={color} fillOpacity={fillOpacity} stroke={color} strokeWidth="3" vectorEffect="non-scaling-stroke" onClick={activate} />;
+    }
+    return null;
+  })}</g>;
 }
 function Compass({ rotation }: { rotation: number }) {
   return (
@@ -1074,6 +1197,49 @@ function Stats({ nodes }: { nodes: Record<string, NodeData> }) {
         <span>父级异常 Shelf<b>{parentIssueShelves.length}</b></span>
         {Object.entries(styles).map(([style, count]) => <span key={style}>{style}<b>{count}</b></span>)}
       </div>
+    </section>
+  );
+}
+const evaluationStatusLabel: Record<RuleStatus, string> = { pass: "通过", issue: "存在问题", unable_to_determine: "无法判断", not_applicable: "不适用" };
+const evaluationOriginLabel = { source_data: "源数据", parser: "解析", handoff: "交接映射", rule: "评价规则", geometry_tolerance: "几何容差", insufficient_information: "信息不足" };
+const evaluationValue = (value: unknown) => value === null || value === undefined ? "—" : typeof value === "string" ? value : String(value);
+function EvaluationPanel({ report, nodes, error, focusMessage, activeHighlight, disabled, onRun, onFocus, onRegisterRule }: { report: EvaluationReport | null; nodes: Record<string, NodeData>; error: string | null; focusMessage: string | null; activeHighlight: EvaluationHighlight | null; disabled: boolean; onRun: () => void; onFocus: (ruleId: string, target: EvaluationFocusTarget, targetIndex: number) => void; onRegisterRule: (ruleId: string, element: HTMLElement | null) => void }) {
+  return (
+    <section className="side-section evaluation-panel">
+      <div className="side-heading"><h2>G1 基础检查</h2><button className="primary" disabled={disabled} onClick={onRun}>运行基础检查</button></div>
+      {error && <div className="evaluation-error"><b>评价失败</b><span>{error}</span></div>}
+      {focusMessage && <div className="evaluation-focus-message">{focusMessage}</div>}
+      {!report && !error && <p>解析完成后手动运行；评价不会随画布变化自动重复。</p>}
+      {report && <>
+        <div className={`evaluation-overall status-${report.overallStatus}`}><span>整体状态</span><b>{evaluationStatusLabel[report.overallStatus]}</b></div>
+        <div className="evaluation-counts">
+          {(Object.keys(evaluationStatusLabel) as RuleStatus[]).map((status) => <span key={status}>{evaluationStatusLabel[status]} <b>{report.counts[status]}</b></span>)}
+        </div>
+        <div className="evaluation-rules">
+          {report.rules.map((item) => { const presentation = designerRulePresentation(item, nodes), locations = [...new Set(presentation.targets.map((target) => target.levelName))], activeIndex = activeHighlight?.ruleId === item.ruleId ? activeHighlight.targetIndex : 0, targetIndex = Math.min(activeIndex, Math.max(0, presentation.targets.length - 1)), target = presentation.targets[targetIndex], isActive = activeHighlight?.ruleId === item.ruleId; return <article key={item.ruleId} ref={(element) => onRegisterRule(item.ruleId, element)} className={`evaluation-rule status-${item.status}${isActive ? " active-evaluation-rule" : ""}`}>
+            <div className="evaluation-rule-heading"><strong>{presentation.title}</strong><em>{evaluationStatusLabel[item.status]}</em></div>
+            <p>{presentation.description}</p>
+            <div className="designer-guidance"><span><b>为什么要处理</b>{presentation.rationale}</span><span><b>建议</b>{presentation.recommendation}</span>{presentation.supplemental && <span className="supplemental">{presentation.supplemental}</span>}</div>
+            <div className="evaluation-card-meta"><span>问题数量 <b>{presentation.problemCountLabel}</b></span><span>所在楼层 <b>{locations.length ? locations.join("、") : "—"}</b></span></div>
+            {target && <div className="evaluation-object-nav">
+              <span className="evaluation-object-label">{target.label}</span>
+              <div><button disabled={targetIndex === 0} aria-label={`${presentation.title} 上一处`} onClick={() => onFocus(item.ruleId, presentation.targets[targetIndex - 1]!, targetIndex - 1)}>上一处</button><b>{targetIndex + 1} / {presentation.targets.length}</b><button disabled={targetIndex >= presentation.targets.length - 1} aria-label={`${presentation.title} 下一处`} onClick={() => onFocus(item.ruleId, presentation.targets[targetIndex + 1]!, targetIndex + 1)}>下一处</button></div>
+              <button className="view-on-canvas" onClick={() => onFocus(item.ruleId, target, targetIndex)}>在图中查看</button>
+            </div>}
+            <details>
+              <summary>技术明细</summary>
+              <small><b>规则</b>{item.ruleId} · {item.ruleName}</small>
+              {item.normalizedObjectIds.length > 0 && <small><b>标准化 ID</b>{item.normalizedObjectIds.join(", ")}</small>}
+              {item.pascalSourceIds.length > 0 && <small><b>Pascal ID</b>{item.pascalSourceIds.join(", ")}</small>}
+              {item.missingData.length > 0 && <small><b>缺失数据</b>{item.missingData.join("；")}</small>}
+              <small><b>置信度</b>{item.confidence.level} ({item.confidence.score}){item.confidence.reasons.length ? ` · ${item.confidence.reasons.join("；")}` : ""}</small>
+              {item.diagnostics.length > 0 && <small><b>原始字段与诊断</b>{item.diagnostics.map((diagnostic) => `${diagnostic.field ?? diagnostic.code}: 实际=${evaluationValue(diagnostic.actualValue)}；要求=${diagnostic.expectedValue ?? "—"}；来源=${diagnostic.origin ? evaluationOriginLabel[diagnostic.origin] : "—"}；${diagnostic.message}`).join("；")}</small>}
+              {item.measurements.length > 0 && <small><b>测量值</b>{item.measurements.map((measurement) => `${measurement.normalizedObjectId ? `${measurement.normalizedObjectId}.` : ""}${measurement.name}=${evaluationValue(measurement.value)}${measurement.unit ? ` ${measurement.unit}` : ""}`).join("；")}</small>}
+              {item.thresholds.length > 0 && <small><b>阈值/容差</b>{item.thresholds.map((threshold) => `${threshold.name}=${evaluationValue(threshold.value)}${threshold.unit ? ` ${threshold.unit}` : ""}`).join("；")}</small>}
+            </details>
+          </article>; })}
+        </div>
+      </>}
     </section>
   );
 }

@@ -2,6 +2,7 @@ import { NodeData, Parsed } from "../types";
 import { finalDimensions, resolveAncestorLevelId, resolveItemPlanTransform, resolveWallOpeningTransform } from "../geometry/transform";
 import { resolveShelfData } from "../geometry/shelf";
 import { zonePoints } from "../geometry/zone";
+import { buildExperimentalWalls, Wall as GeometryWall } from "../geometry/walls";
 
 type Point = [number, number];
 const point = (value: unknown): Point | null => Array.isArray(value) && value.length >= 2 && value.slice(0, 2).every(Number.isFinite) ? [value[0], value[1]] : null;
@@ -21,7 +22,18 @@ export function buildEvaluationHandoff(parsed: Parsed) {
     const outline = zonePoints(node).map((item) => [item.x, item.z] as Point);
     return { ...base(node, nodes), color: node.color ?? null, outline, areaSquareMeters: outline.length >= 3 ? polygonArea(outline) : null };
   });
-  const walls = ofType("wall").map((node) => ({ ...base(node, nodes), start: point(node.start), end: point(node.end), thicknessMeters: Number.isFinite(node.thickness) && node.thickness > 0 ? node.thickness : .1, thicknessSource: Number.isFinite(node.thickness) && node.thickness > 0 ? "explicit" : "pascal-default", heightMeters: Number.isFinite(node.height) ? node.height : null, curveOffsetMeters: Number.isFinite(node.curveOffset) ? node.curveOffset : 0, frontSide: node.frontSide ?? null, backSide: node.backSide ?? null }));
+  const wallNodes = ofType("wall"), footprintValidationById = new Map<string, { valid: boolean; codes: string[]; areaSquareMeters: number }>();
+  const validWallNodes = wallNodes.filter((node) => point(node.start) && point(node.end));
+  const wallLevelIds = [...new Set(validWallNodes.map((node) => levelIdOf(node, nodes)))];
+  for (const levelId of wallLevelIds) {
+    const group = validWallNodes.filter((node) => levelIdOf(node, nodes) === levelId) as GeometryWall[];
+    try {
+      buildExperimentalWalls(group).forEach((item) => footprintValidationById.set(item.wallId, { valid: item.validation.valid, codes: item.validation.codes, areaSquareMeters: Math.abs(item.validation.area) }));
+    } catch {
+      group.forEach((node) => footprintValidationById.set(node.id, { valid: false, codes: ["wall_footprint_evaluation_failed"], areaSquareMeters: 0 }));
+    }
+  }
+  const walls = wallNodes.map((node) => ({ ...base(node, nodes), start: point(node.start), end: point(node.end), thicknessMeters: Number.isFinite(node.thickness) && node.thickness > 0 ? node.thickness : .1, thicknessSource: Number.isFinite(node.thickness) && node.thickness > 0 ? "explicit" : "pascal-default", heightMeters: Number.isFinite(node.height) ? node.height : null, curveOffsetMeters: Number.isFinite(node.curveOffset) ? node.curveOffset : 0, frontSide: node.frontSide ?? null, backSide: node.backSide ?? null, footprintValidation: footprintValidationById.get(node.id) ?? { valid: false, codes: ["wall_invalid_centerline"], areaSquareMeters: 0 } }));
   const opening = (node: NodeData) => { const resolved = resolveWallOpeningTransform(node, nodes); return { ...base(node, nodes), hostWallId: node.wallId ?? node.parentId ?? null, rawWallLocalPosition: Array.isArray(node.position) ? node.position : null, resolvedWorldPosition: resolved ? [resolved.x, resolved.z] : null, resolvedTangentRadians: resolved?.rotationY ?? null, widthMeters: Number.isFinite(node.width) ? node.width : null, heightMeters: Number.isFinite(node.height) ? node.height : null, side: node.side ?? null, openingKind: node.openingKind ?? null, openingShape: node.openingShape ?? null, frameThicknessMeters: Number.isFinite(node.frameThickness) ? node.frameThickness : null, frameDepthMeters: Number.isFinite(node.frameDepth) ? node.frameDepth : null }; };
   const doors = ofType("door").map((node) => ({ ...opening(node), doorType: node.doorType ?? "hinged", hingesSide: node.hingesSide ?? null, swingDirection: node.swingDirection ?? null, swingAngleRadians: Number.isFinite(node.swingAngle) ? node.swingAngle : null, slideDirection: node.slideDirection ?? null, trackStyle: node.trackStyle ?? null, leafCount: Number.isFinite(node.leafCount) ? node.leafCount : null, garagePanelCount: Number.isFinite(node.garagePanelCount) ? node.garagePanelCount : null }));
   const windows = ofType("window").map((node) => ({ ...opening(node), windowType: node.windowType ?? null, hingesSide: node.hingesSide ?? null, awningDirection: node.awningDirection ?? null, casementStyle: node.casementStyle ?? null, sill: node.sill ?? null, sillDepthMeters: Number.isFinite(node.sillDepth) ? node.sillDepth : null }));

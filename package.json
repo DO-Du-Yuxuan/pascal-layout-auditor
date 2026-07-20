@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "report:sample": "GENERATE_SAMPLE_REPORT=1 vitest run scripts/generate-sample-evaluation-report.test.ts"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",

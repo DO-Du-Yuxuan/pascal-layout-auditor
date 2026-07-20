@@ -78,7 +78,7 @@ Every emitted entity has both `id` and `rawPascalId`; currently they are identic
 | Level | ID, raw Pascal ID, name, ordinal (`level`), parent, visibility. |
 | Zone | Base fields, color, closed outline in `[x,z]`, signed-area magnitude in m². |
 | Space | Derived one-to-one from a Zone, with `sourceZoneId` and `source: "derived-from-zone"`; Pascal has no independently parsed `space` node in this demo. |
-| Wall | Start/end centerline, physical thickness or 0.1 m Pascal default, height, curve offset, front/back side metadata, level. |
+| Wall | Start/end centerline, physical thickness or 0.1 m Pascal default, height, curve offset, front/back side metadata, level, and additive footprint validation status/codes/area for evaluator safety. |
 | Door | Host wall, raw wall-local position, resolved world point/tangent when resolvable, width/height, side, opening and frame fields, type, hinge/swing/slide/track/panel metadata. |
 | Window | Same host/placement/dimension information as Door plus window type, awning, casement and sill fields. |
 | Furniture | Pascal `item` whose category is neither structural column nor an appliance category; asset ID/category/tags, final dimensions (`asset.dimensions × item.scale`), raw and resolved transform, floor-plan URL. |
