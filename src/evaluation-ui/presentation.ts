@@ -31,10 +31,11 @@ export function evaluationFocusTargets(rule: RuleResult, nodes: Record<string, N
   const candidates = rule.normalizedObjectIds.map((id) => nodes[id]).filter((node): node is NodeData => Boolean(node));
   const primary = rule.ruleId === "G1-004" ? candidates.filter((node) => node.type === "wall")
     : rule.ruleId === "G1-005" ? candidates.filter((node) => node.type === "stair")
-      : rule.ruleId === "G1-013" ? candidates.filter((node) => node.type === "window" || node.type === "door") : [];
+      : rule.ruleId === "G1-013" ? candidates.filter((node) => node.type === "window" || node.type === "door")
+        : rule.ruleId === "G1-023" ? candidates.filter((node) => node.type === "item") : [];
   return primary.map((node, index) => {
     const levelId = resolveAncestorLevelId(node.id, nodes).levelId ?? null, levelName = humanLevelName(levelId ?? undefined, nodes);
-    const typeLabel = rule.ruleId === "G1-004" ? `无效墙体 ${index + 1}` : node.type === "stair" ? "楼梯" : node.type === "window" ? "窗户" : "门";
+    const typeLabel = rule.ruleId === "G1-004" ? `无效墙体 ${index + 1}` : rule.ruleId === "G1-023" ? `${node.name || "家具或设备"} ${index + 1}` : node.type === "stair" ? "楼梯" : node.type === "window" ? "窗户" : "门";
     const hostId = rule.ruleId === "G1-013" ? node.wallId ?? node.parentId : null;
     return { primaryId: node.id, relatedIds: hostId && nodes[hostId] ? [hostId] : [], label: `${typeLabel} · ${levelName}`, levelId, levelName };
   });
@@ -78,6 +79,30 @@ export function designerRulePresentation(rule: RuleResult, nodes: Record<string,
       problemCountLabel: "未确定", targets: [],
     };
   }
+  if (rule.ruleId === "G1-006") {
+    const unavailable = Number(measurement(rule, "usableForEvaluation") === false ? 1 : 0);
+    return {
+      title: rule.status === "pass" ? "已识别各楼层的建筑范围" : "建筑范围暂时无法可靠识别",
+      description: rule.status === "pass" ? "系统已根据楼层中的 Floor/Slab 轮廓生成建筑平面范围。" : "当前 Floor/Slab 轮廓不足或存在异常，系统不能可靠判断该楼层的室内建筑范围。",
+      rationale: "建筑范围是判断家具、设备和后续空间关系的共同依据。",
+      recommendation: rule.status === "pass" ? "可在画布中打开“显示建筑边界”核对结果。" : "检查该楼层的 Floor/Slab 轮廓是否完整、闭合且属于室内区域。",
+      problemCountLabel: rule.status === "pass" ? "0" : String(Math.max(1, unavailable)), targets: [],
+    };
+  }
+  if (rule.ruleId === "G1-023" && rule.status === "issue") return {
+    title: `发现 ${count} 个家具或设备越出建筑范围`,
+    description: "这些对象的实际平面占地有一部分落在计算出的建筑范围之外。",
+    rationale: "越界对象可能影响布置、施工尺寸或室内外功能判断。",
+    recommendation: "在图中定位后检查对象位置、尺寸和所属楼层；室外对象应使用明确的室外分类。",
+    problemCountLabel: String(count), targets,
+  };
+  if (rule.ruleId === "G1-023" && rule.status === "unable_to_determine") return {
+    title: "部分家具或设备暂时无法核验范围",
+    description: "缺少可靠建筑边界、对象占地或类别信息，系统不会猜测对象是否在室内。",
+    rationale: "需要同时具备可靠的建筑范围和对象平面占地，才能判断是否越界。",
+    recommendation: "补充 Floor/Slab 轮廓以及对象位置、宽度、深度和类别。",
+    problemCountLabel: "未确定", targets,
+  };
   return {
     title: rule.ruleName,
     description: rule.summary,

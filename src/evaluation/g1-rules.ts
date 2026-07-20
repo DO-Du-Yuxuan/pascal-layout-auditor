@@ -1,5 +1,6 @@
 import type { EvaluationHandoff } from "../parser/evaluation-handoff";
 import { relateOpeningToHostBoundary } from "./geometry";
+import { buildBuildingEnvelopes, outsideFootprintArea, polygonArea, rectangularFootprint } from "./envelope";
 import { G1_GEOMETRY_TOLERANCES as T } from "./tolerances";
 import type { G1Rule, RuleDiagnostic, RuleResult, RuleStatus } from "./types";
 
@@ -90,4 +91,35 @@ export const ruleG1013: G1Rule = (h) => {
   return result("G1-013", "门窗位于有效开口边界", status, outside.length ? `${outside.length} 个门窗超出直墙有效区间` : unknown.length ? `${unknown.length} 个门窗因几何或宿主证据不足无法判断` : "所有可评价门窗均位于直墙有效区间", { details: relevant.map((r) => `${r.openingId}: ${r.status}${r.reason ? `（${r.reason}）` : ""}`), normalizedObjectIds: ids(affected), pascalSourceIds: rawIds(affected), measurements: relevant.flatMap((r) => { const opening = openingById.get(r.openingId)!; return [{ name: "wallLength", value: r.wallLengthMeters, unit: "m", normalizedObjectId: r.openingId }, { name: "openingCenterAlongWall", value: r.openingCenterMeters, unit: "m", normalizedObjectId: r.openingId }, { name: "openingWidth", value: opening.widthMeters, unit: "m", normalizedObjectId: r.openingId }, { name: "openingStart", value: r.openingStartMeters, unit: "m", normalizedObjectId: r.openingId }, { name: "openingEnd", value: r.openingEndMeters, unit: "m", normalizedObjectId: r.openingId }, { name: "rightOvershoot", value: r.rightOvershootMeters, unit: "m", normalizedObjectId: r.openingId }, { name: "leftOvershoot", value: r.leftOvershootMeters, unit: "m", normalizedObjectId: r.openingId }, { name: "resolvedWorldPosition", value: JSON.stringify(opening.resolvedWorldPosition), normalizedObjectId: r.openingId }]; }), thresholds: [{ name: "pointOnBoundaryTolerance", value: T.pointOnBoundaryMeters, unit: "m" }], missingData: unknown.map((r) => `${r.openingId}: ${r.reason}`), confidence: confidence(unknown.length ? "medium" : "high", unknown.map((r) => `${r.openingId}: ${r.reason}`)), diagnostics });
 };
 
-export const FIRST_G1_RULES: G1Rule[] = [ruleG1001, ruleG1002, ruleG1003, ruleG1004, ruleG1005, ruleG1013, ruleG1019];
+export const ruleG1006: G1Rule = (h) => {
+  const envelopes = buildBuildingEnvelopes(h), unavailable = envelopes.filter((envelope) => !envelope.usableForEvaluation), broken = unavailable.filter((envelope) => envelope.sourceType !== "none");
+  const status: RuleStatus = broken.length ? "issue" : unavailable.length ? "unable_to_determine" : "pass";
+  return result("G1-006", "建筑平面边界能够识别", status, status === "pass" ? `${envelopes.length} 个参与评价楼层均已由 Slab 轮廓识别有效建筑范围` : broken.length ? `${broken.length} 个楼层的 Slab 边界存在明确几何异常` : `${unavailable.length} 个楼层缺少可作为建筑范围的可靠 Slab 轮廓`, {
+    details: envelopes.flatMap((envelope) => envelope.diagnostics.map((diagnostic) => `${envelope.levelId}: ${diagnostic.message}`)),
+    normalizedObjectIds: envelopes.flatMap((envelope) => [envelope.levelId, ...envelope.sourceObjectIds]), pascalSourceIds: envelopes.flatMap((envelope) => envelope.pascalSourceIds),
+    measurements: envelopes.flatMap((envelope) => [{ name: "envelopeArea", value: envelope.areaSquareMeters, unit: "m²", normalizedObjectId: envelope.levelId }, { name: "polygonCount", value: envelope.polygons.length, normalizedObjectId: envelope.levelId }, { name: "holeCount", value: envelope.holes.length, normalizedObjectId: envelope.levelId }, { name: "usableForEvaluation", value: envelope.usableForEvaluation, normalizedObjectId: envelope.levelId }, { name: "sourceType", value: envelope.sourceType, normalizedObjectId: envelope.levelId }]),
+    thresholds: [{ name: "minimumEnvelopeArea", value: T.areaSquareMeters, unit: "m²" }, { name: "boundaryContactTolerance", value: T.pointOnBoundaryMeters, unit: "m" }],
+    missingData: unavailable.flatMap((envelope) => envelope.diagnostics.map((diagnostic) => `${envelope.levelId}: ${diagnostic.message}`)), confidence: confidence(status === "pass" ? "medium" : "low", envelopes.flatMap((envelope) => envelope.diagnostics.map((diagnostic) => diagnostic.message))),
+    diagnostics: unavailable.flatMap((envelope) => envelope.diagnostics.map((diagnostic) => ({ severity: envelope.sourceType === "none" ? "warning" as const : "error" as const, code: diagnostic.code, message: diagnostic.message, normalizedObjectIds: [envelope.levelId, ...envelope.sourceObjectIds], origin: envelope.sourceType === "none" ? "insufficient_information" as const : "source_data" as const, recommendation: "补充或修复该楼层的可见室内 Floor/Slab Polygon；Zone 不会被当作建筑边界。" }))),
+  });
+};
+
+export const ruleG1023: G1Rule = (h) => {
+  const envelopes = new Map(buildBuildingEnvelopes(h).map((envelope) => [envelope.levelId, envelope])), excludedCategories = new Set(["vehicles"]), candidates = [...h.furniture, ...h.equipment].filter((item) => !excludedCategories.has(item.category ?? "")), contactAreaTolerance = T.pointOnBoundaryMeters ** 2 * 2;
+  if (!candidates.length) return result("G1-023", "家具与设备位于有效建筑范围", "not_applicable", "没有参与室内平面评价的家具或设备");
+  const outside: typeof candidates = [], unknown: typeof candidates = [], measurements: RuleResult["measurements"] = [], diagnostics: RuleDiagnostic[] = [];
+  for (const item of candidates) {
+    const footprint = rectangularFootprint(item), envelope = item.levelId ? envelopes.get(item.levelId) : undefined;
+    if (!item.category || !footprint) { unknown.push(item); diagnostics.push({ severity: "warning", code: "item_footprint_unavailable", message: `${item.name ?? item.id} 缺少可靠的类别、尺寸或平面坐标`, normalizedObjectIds: [item.id], origin: "insufficient_information", recommendation: "补充对象类别、宽度、深度和可解析的平面位置后再检查。" }); continue; }
+    if (!envelope?.usableForEvaluation) { unknown.push(item); diagnostics.push({ severity: "warning", code: "building_envelope_unavailable", message: `${item.name ?? item.id} 所属楼层没有可靠建筑边界`, normalizedObjectIds: [item.id], origin: "insufficient_information", recommendation: "先补充该楼层的有效 Floor/Slab Polygon。" }); continue; }
+    const outsideArea = outsideFootprintArea(footprint, envelope), footprintArea = polygonArea(footprint);
+    if (outsideArea === null) { unknown.push(item); diagnostics.push({ severity: "warning", code: "containment_geometry_failed", message: `${item.name ?? item.id} 的包含关系几何计算失败`, normalizedObjectIds: [item.id], origin: "insufficient_information" }); continue; }
+    const ratio = footprintArea > 0 ? outsideArea / footprintArea : null;
+    if (outsideArea > contactAreaTolerance) { outside.push(item); measurements.push({ name: "footprintArea", value: footprintArea, unit: "m²", normalizedObjectId: item.id }, { name: "outsideArea", value: outsideArea, unit: "m²", normalizedObjectId: item.id }, { name: "outsideAreaRatio", value: ratio, normalizedObjectId: item.id }, { name: "envelopeArea", value: envelope.areaSquareMeters, unit: "m²", normalizedObjectId: item.id }); diagnostics.push({ severity: "error", code: "item_outside_building_envelope", message: `${item.name ?? item.id} 有 ${(outsideArea * 1000000).toFixed(0)} mm² 的平面占地越出建筑范围`, normalizedObjectIds: [item.id, ...envelope.sourceObjectIds], field: "footprint", actualValue: outsideArea, expectedValue: `≤ ${contactAreaTolerance} m²`, origin: "source_data", recommendation: "检查家具/设备位置、尺寸或所属楼层；如该对象属于室外，请使用明确的室外分类。" }); }
+  }
+  const status: RuleStatus = outside.length ? "issue" : unknown.length ? "unable_to_determine" : "pass";
+  const affected = [...outside, ...unknown];
+  return result("G1-023", "家具与设备位于有效建筑范围", status, outside.length ? `${outside.length} 个家具或设备部分或完全位于建筑范围外` : unknown.length ? `${unknown.length} 个家具或设备因边界、类别或占地信息不足无法判断` : `${candidates.length} 个参与评价的家具和设备均位于有效建筑范围内`, { normalizedObjectIds: ids(affected), pascalSourceIds: rawIds(affected), measurements: [{ name: "participatingItemCount", value: candidates.length }, { name: "outsideItemCount", value: outside.length }, { name: "unableToDetermineItemCount", value: unknown.length }, ...measurements], thresholds: [{ name: "outsideAreaTolerance", value: contactAreaTolerance, unit: "m²" }, { name: "boundaryContactTolerance", value: T.pointOnBoundaryMeters, unit: "m" }], missingData: unknown.map((item) => `${item.id}: 需要可靠的对象 footprint 与所属 Level 建筑边界`), confidence: confidence(status === "pass" ? "medium" : unknown.length ? "low" : "medium", ["建筑边界由 Slab 并集推导", ...unknown.map((item) => `${item.id} 缺少包含关系输入`)]), diagnostics, details: diagnostics.map((diagnostic) => diagnostic.message) });
+};
+
+export const FIRST_G1_RULES: G1Rule[] = [ruleG1001, ruleG1002, ruleG1003, ruleG1004, ruleG1005, ruleG1006, ruleG1013, ruleG1019, ruleG1023];

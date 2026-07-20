@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import sampleText from "../sample-data/9618b316-3eab-4fcf-9a21-0f7316479968.json?raw";
+import sampleText from "../sample-data/Bellevue demo.json?raw";
 import "./styles.css";
 import "./evaluation.css";
 import { parseProject } from "./parser/parse";
@@ -33,6 +33,7 @@ import { buildEvaluationHandoff } from "./parser/evaluation-handoff";
 import { evaluateG1Foundation, EvaluationReport, RuleStatus } from "./evaluation/evaluate";
 import { designerRulePresentation, evaluationIssueTargets, EvaluationFocusTarget } from "./evaluation-ui/presentation";
 import { evaluationHighlightFor, evaluationHighlightRole, EvaluationHighlight, resolveEvaluationFocus } from "./evaluation-ui/focus";
+import { buildBuildingEnvelopes, BuildingEnvelope } from "./evaluation/envelope";
 
 type Visibility = {
   images: boolean;
@@ -87,6 +88,8 @@ function App() {
     [measurementUnit, setMeasurementUnit] = useState<MeasurementUnit>("millimeters"),
     [imageCropRevision, setImageCropRevision] = useState(0),
     [evaluationReport, setEvaluationReport] = useState<EvaluationReport | null>(null),
+    [buildingEnvelopes, setBuildingEnvelopes] = useState<BuildingEnvelope[]>([]),
+    [showBuildingEnvelope, setShowBuildingEnvelope] = useState(false),
     [evaluationError, setEvaluationError] = useState<string | null>(null),
     [evaluationHighlights, setEvaluationHighlights] = useState<EvaluationHighlight[]>([]),
     [activeEvaluationHighlight, setActiveEvaluationHighlight] = useState<EvaluationHighlight | null>(null),
@@ -108,6 +111,8 @@ function App() {
         Object.values(parsed.nodes).find((n) => n.type === "level")?.id || "";
       setData(parsed);
       setEvaluationReport(null);
+      setBuildingEnvelopes([]);
+      setShowBuildingEnvelope(false);
       setEvaluationError(null);
       setEvaluationHighlights([]);
       setActiveEvaluationHighlight(null);
@@ -130,6 +135,8 @@ function App() {
       setNextId(2);
     } catch {
       setEvaluationReport(null);
+      setBuildingEnvelopes([]);
+      setShowBuildingEnvelope(false);
       setEvaluationError(null);
       setEvaluationHighlights([]);
       setActiveEvaluationHighlight(null);
@@ -147,7 +154,7 @@ function App() {
       });
     }
   };
-  useEffect(() => { load(sampleText, "reference-layout.json"); }, []);
+  useEffect(() => { load(sampleText, "Bellevue demo.json"); }, []);
   const updateCanvas = (id: number, update: Partial<CanvasState>) =>
     setCanvases((current) =>
       current.map((canvas) =>
@@ -187,8 +194,9 @@ function App() {
   const runFoundationEvaluation = () => {
     if (!data) return;
     try {
-      const report = evaluateG1Foundation(buildEvaluationHandoff(data));
+      const handoff = buildEvaluationHandoff(data), report = evaluateG1Foundation(handoff);
       setEvaluationReport(report);
+      setBuildingEnvelopes(buildBuildingEnvelopes(handoff));
       setEvaluationHighlights(evaluationIssueTargets(report.rules, nodes).map((target) => evaluationHighlightFor(target.ruleId, target, target.targetIndex)));
       setActiveEvaluationHighlight(null);
       setEvaluationError(null);
@@ -240,7 +248,7 @@ function App() {
           <button className="primary" onClick={() => input.current?.click()}>
             导入 JSON
           </button>
-          <button onClick={() => load(sampleText, "reference-layout.json")}>
+          <button onClick={() => load(sampleText, "Bellevue demo.json")}>
             加载示例
           </button>
           <input
@@ -285,6 +293,7 @@ function App() {
                   {label}
                 </label>
               ))}
+              <label><input type="checkbox" checked={showBuildingEnvelope} onChange={() => setShowBuildingEnvelope((shown) => !shown)} />显示建筑边界</label>
             </div>
           </section>
           <Inspector
@@ -324,6 +333,8 @@ function App() {
                 selectedId={selectedId}
                 evaluationHighlights={evaluationHighlights}
                 activeEvaluationHighlight={activeEvaluationHighlight}
+                buildingEnvelopes={buildingEnvelopes}
+                showBuildingEnvelope={showBuildingEnvelope}
                 measurementMode={measurementMode}
                 measurementUnit={measurementUnit}
                 manualMeasurements={manualMeasurements.filter((item) => item.levelId === (canvas.levelId || levels[0]?.id || ""))}
@@ -354,6 +365,8 @@ function CanvasPanel({
   selectedId,
   evaluationHighlights,
   activeEvaluationHighlight,
+  buildingEnvelopes,
+  showBuildingEnvelope,
   onSelect,
   onClearEvaluationHighlight,
   onActivateEvaluationHighlight,
@@ -376,6 +389,8 @@ function CanvasPanel({
   selectedId: string | null;
   evaluationHighlights: EvaluationHighlight[];
   activeEvaluationHighlight: EvaluationHighlight | null;
+  buildingEnvelopes: BuildingEnvelope[];
+  showBuildingEnvelope: boolean;
   onSelect: (id: string | null) => void;
   onClearEvaluationHighlight: () => void;
   onActivateEvaluationHighlight: (highlight: EvaluationHighlight) => void;
@@ -458,6 +473,8 @@ function CanvasPanel({
         selectedId={selectedId}
         evaluationHighlights={evaluationHighlights}
         activeEvaluationHighlight={activeEvaluationHighlight}
+        buildingEnvelope={buildingEnvelopes.find((envelope) => envelope.levelId === levelId) ?? null}
+        showBuildingEnvelope={showBuildingEnvelope}
         onSelect={onSelect}
         onClearEvaluationHighlight={onClearEvaluationHighlight}
         onActivateEvaluationHighlight={onActivateEvaluationHighlight}
@@ -533,6 +550,8 @@ function Plan({
   selectedId,
   evaluationHighlights,
   activeEvaluationHighlight,
+  buildingEnvelope,
+  showBuildingEnvelope,
   onSelect,
   onClearEvaluationHighlight,
   onActivateEvaluationHighlight,
@@ -554,6 +573,8 @@ function Plan({
   selectedId: string | null;
   evaluationHighlights: EvaluationHighlight[];
   activeEvaluationHighlight: EvaluationHighlight | null;
+  buildingEnvelope: BuildingEnvelope | null;
+  showBuildingEnvelope: boolean;
   onSelect: (id: string | null) => void;
   onClearEvaluationHighlight: () => void;
   onActivateEvaluationHighlight: (highlight: EvaluationHighlight) => void;
@@ -752,6 +773,7 @@ function Plan({
           {measurementMode !== "off" && measurementHover && <SnapIndicator snap={measurementHover} active={Boolean(measurementStart)} />}
           </g>
           {highlightsOnLevel.length > 0 && <EvaluationHighlightOverlay highlights={highlightsOnLevel} activeHighlight={activeEvaluationHighlight} nodes={nodes} exactWalls={exactWalls} onActivate={onActivateEvaluationHighlight} />}
+          {showBuildingEnvelope && buildingEnvelope?.usableForEvaluation && <BuildingEnvelopeOverlay envelope={buildingEnvelope} />}
         </g>
       </svg>
       {measurementMode !== "off" && <div className="measure-hint">{measurementStart ? `${orthogonalLock ? activeMeasurementMode === "horizontal" ? "水平正交已开启" : "垂直正交已开启" : "自由对齐"} · 点击第二点 · Shift 切换正交 · Esc 退出` : `${orthogonalLock ? "正交已开启" : "正交已关闭"} · 点击第一点 · Shift 切换正交 · Esc 退出`}</div>}
@@ -760,6 +782,9 @@ function Plan({
       <div className="legend">{formatPanelLength(viewBox.width, measurementUnit)} × {formatPanelLength(viewBox.height, measurementUnit)}</div>
     </div>
   );
+}
+function BuildingEnvelopeOverlay({ envelope }: { envelope: BuildingEnvelope }) {
+  return <g className="building-envelope-overlay" pointerEvents="none">{envelope.polygons.map((polygon, index) => <g key={index}>{polygon.map((ring, ringIndex) => <polygon key={ringIndex} points={ring.map(([x, z]) => `${x},${z}`).join(" ")} fill={ringIndex === 0 ? "#ed8b2c" : "#f7f8f5"} fillOpacity={ringIndex === 0 ? ".05" : "1"} stroke="#ed8b2c" strokeWidth={ringIndex === 0 ? "2" : "1"} vectorEffect="non-scaling-stroke" />)}</g>)}</g>;
 }
 function EvaluationHighlightOverlay({ highlights, activeHighlight, nodes, exactWalls, onActivate }: { highlights: EvaluationHighlight[]; activeHighlight: EvaluationHighlight | null; nodes: Record<string, NodeData>; exactWalls: ReturnType<typeof buildExperimentalWalls>; onActivate: (highlight: EvaluationHighlight) => void }) {
   const wallById = new Map(exactWalls.map((wall) => [wall.wallId, wall]));

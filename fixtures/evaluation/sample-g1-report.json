@@ -7,7 +7,7 @@
   "counts": {
     "pass": 4,
     "issue": 1,
-    "unable_to_determine": 2,
+    "unable_to_determine": 4,
     "not_applicable": 0
   },
   "tolerances": {
@@ -262,6 +262,122 @@
       ]
     },
     {
+      "ruleId": "G1-006",
+      "ruleName": "建筑平面边界能够识别",
+      "status": "unable_to_determine",
+      "severity": "warning",
+      "summary": "2 个楼层缺少可作为建筑范围的可靠 Slab 轮廓",
+      "details": [
+        "level_jwi4ovhyra2ayxa5: 该楼层没有可用的 Floor/Slab 轮廓",
+        "level_tf1ug5dswkkzfhqa: 该楼层没有可用的 Floor/Slab 轮廓"
+      ],
+      "normalizedObjectIds": [
+        "level_jwi4ovhyra2ayxa5",
+        "level_tf1ug5dswkkzfhqa"
+      ],
+      "pascalSourceIds": [],
+      "measurements": [
+        {
+          "name": "envelopeArea",
+          "value": null,
+          "unit": "m²",
+          "normalizedObjectId": "level_jwi4ovhyra2ayxa5"
+        },
+        {
+          "name": "polygonCount",
+          "value": 0,
+          "normalizedObjectId": "level_jwi4ovhyra2ayxa5"
+        },
+        {
+          "name": "holeCount",
+          "value": 0,
+          "normalizedObjectId": "level_jwi4ovhyra2ayxa5"
+        },
+        {
+          "name": "usableForEvaluation",
+          "value": false,
+          "normalizedObjectId": "level_jwi4ovhyra2ayxa5"
+        },
+        {
+          "name": "sourceType",
+          "value": "none",
+          "normalizedObjectId": "level_jwi4ovhyra2ayxa5"
+        },
+        {
+          "name": "envelopeArea",
+          "value": null,
+          "unit": "m²",
+          "normalizedObjectId": "level_tf1ug5dswkkzfhqa"
+        },
+        {
+          "name": "polygonCount",
+          "value": 0,
+          "normalizedObjectId": "level_tf1ug5dswkkzfhqa"
+        },
+        {
+          "name": "holeCount",
+          "value": 0,
+          "normalizedObjectId": "level_tf1ug5dswkkzfhqa"
+        },
+        {
+          "name": "usableForEvaluation",
+          "value": false,
+          "normalizedObjectId": "level_tf1ug5dswkkzfhqa"
+        },
+        {
+          "name": "sourceType",
+          "value": "none",
+          "normalizedObjectId": "level_tf1ug5dswkkzfhqa"
+        }
+      ],
+      "thresholds": [
+        {
+          "name": "minimumEnvelopeArea",
+          "value": 1e-8,
+          "unit": "m²"
+        },
+        {
+          "name": "boundaryContactTolerance",
+          "value": 0.01,
+          "unit": "m"
+        }
+      ],
+      "missingData": [
+        "level_jwi4ovhyra2ayxa5: 该楼层没有可用的 Floor/Slab 轮廓",
+        "level_tf1ug5dswkkzfhqa: 该楼层没有可用的 Floor/Slab 轮廓"
+      ],
+      "confidence": {
+        "level": "low",
+        "score": 0.4,
+        "reasons": [
+          "该楼层没有可用的 Floor/Slab 轮廓",
+          "该楼层没有可用的 Floor/Slab 轮廓"
+        ]
+      },
+      "diagnostics": [
+        {
+          "severity": "warning",
+          "code": "no_level_slab",
+          "message": "该楼层没有可用的 Floor/Slab 轮廓",
+          "normalizedObjectIds": [
+            "level_jwi4ovhyra2ayxa5"
+          ],
+          "origin": "insufficient_information",
+          "recommendation": "补充或修复该楼层的可见室内 Floor/Slab Polygon；Zone 不会被当作建筑边界。"
+        },
+        {
+          "severity": "warning",
+          "code": "no_level_slab",
+          "message": "该楼层没有可用的 Floor/Slab 轮廓",
+          "normalizedObjectIds": [
+            "level_tf1ug5dswkkzfhqa"
+          ],
+          "origin": "insufficient_information",
+          "recommendation": "补充或修复该楼层的可见室内 Floor/Slab Polygon；Zone 不会被当作建筑边界。"
+        }
+      ]
+    },
+    {
       "ruleId": "G1-013",
       "ruleName": "门窗位于有效开口边界",
       "status": "unable_to_determine",
@@ -402,6 +518,86 @@
           ],
           "origin": "insufficient_information",
           "recommendation": "提供独立房间识别结果以及主要空间分类后再运行此规则。"
+        }
+      ]
+    },
+    {
+      "ruleId": "G1-023",
+      "ruleName": "家具与设备位于有效建筑范围",
+      "status": "unable_to_determine",
+      "severity": "warning",
+      "summary": "2 个家具或设备因边界、类别或占地信息不足无法判断",
+      "details": [
+        "Herman Miller Aeron 所属楼层没有可靠建筑边界",
+        "Stove 所属楼层没有可靠建筑边界"
+      ],
+      "normalizedObjectIds": [
+        "item_010u26nmiwafik24",
+        "item_xbz96hwvq9vgqvfh"
+      ],
+      "pascalSourceIds": [
+        "item_010u26nmiwafik24",
+        "item_xbz96hwvq9vgqvfh"
+      ],
+      "measurements": [
+        {
+          "name": "participatingItemCount",
+          "value": 2
+        },
+        {
+          "name": "outsideItemCount",
+          "value": 0
+        },
+        {
+          "name": "unableToDetermineItemCount",
+          "value": 2
+        }
+      ],
+      "thresholds": [
+        {
+          "name": "outsideAreaTolerance",
+          "value": 0.0002,
+          "unit": "m²"
+        },
+        {
+          "name": "boundaryContactTolerance",
+          "value": 0.01,
+          "unit": "m"
+        }
+      ],
+      "missingData": [
+        "item_010u26nmiwafik24: 需要可靠的对象 footprint 与所属 Level 建筑边界",
+        "item_xbz96hwvq9vgqvfh: 需要可靠的对象 footprint 与所属 Level 建筑边界"
+      ],
+      "confidence": {
+        "level": "low",
+        "score": 0.4,
+        "reasons": [
+          "建筑边界由 Slab 并集推导",
+          "item_010u26nmiwafik24 缺少包含关系输入",
+          "item_xbz96hwvq9vgqvfh 缺少包含关系输入"
+        ]
+      },
+      "diagnostics": [
+        {
+          "severity": "warning",
+          "code": "building_envelope_unavailable",
+          "message": "Herman Miller Aeron 所属楼层没有可靠建筑边界",
+          "normalizedObjectIds": [
+            "item_010u26nmiwafik24"
+          ],
+          "origin": "insufficient_information",
+          "recommendation": "先补充该楼层的有效 Floor/Slab Polygon。"
+        },
+        {
+          "severity": "warning",
+          "code": "building_envelope_unavailable",
+          "message": "Stove 所属楼层没有可靠建筑边界",
+          "normalizedObjectIds": [
+            "item_xbz96hwvq9vgqvfh"
+          ],
+          "origin": "insufficient_information",
+          "recommendation": "先补充该楼层的有效 Floor/Slab Polygon。"
         }
       ]
     }

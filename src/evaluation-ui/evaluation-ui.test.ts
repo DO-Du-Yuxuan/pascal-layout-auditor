@@ -50,4 +50,9 @@ describe("Bellevue evaluation UI adapter", () => {
     expect(nextHighlight.primaryId).not.toBe(oldHighlight.primaryId);
     expect(nextHighlight.ruleId).toBe("G1-013");
   });
+
+  it("offers an out-of-envelope furniture object as a canvas target", () => {
+    const object = parsed.nodes.item_010u26nmiwafik24!, synthetic = { ...rule("G1-004"), ruleId: "G1-023", ruleName: "家具与设备位于有效建筑范围", normalizedObjectIds: [object.id], pascalSourceIds: [object.id], status: "issue" as const };
+    expect(designerRulePresentation(synthetic, nodes).targets[0]).toMatchObject({ primaryId: object.id, levelName: "Level 2" });
+  });
 });

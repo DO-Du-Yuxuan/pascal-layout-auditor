@@ -3,6 +3,7 @@ import { finalDimensions, resolveAncestorLevelId, resolveItemPlanTransform, reso
 import { resolveShelfData } from "../geometry/shelf";
 import { zonePoints } from "../geometry/zone";
 import { buildExperimentalWalls, Wall as GeometryWall } from "../geometry/walls";
+import { buildSlabPlanGeometry } from "../geometry/slab";
 
 type Point = [number, number];
 const point = (value: unknown): Point | null => Array.isArray(value) && value.length >= 2 && value.slice(0, 2).every(Number.isFinite) ? [value[0], value[1]] : null;
@@ -21,6 +22,16 @@ export function buildEvaluationHandoff(parsed: Parsed) {
   const zones = ofType("zone").map((node) => {
     const outline = zonePoints(node).map((item) => [item.x, item.z] as Point);
     return { ...base(node, nodes), color: node.color ?? null, outline, areaSquareMeters: outline.length >= 3 ? polygonArea(outline) : null };
+  });
+  const slabs = ofType("slab").map((node) => {
+    const geometry = buildSlabPlanGeometry(node);
+    return {
+      ...base(node, nodes),
+      outline: geometry?.outer.map((point) => [point.x, point.z] as Point) ?? [],
+      holes: geometry?.holes.map((ring) => ring.map((point) => [point.x, point.z] as Point)) ?? [],
+      areaSquareMeters: geometry?.netArea ?? null,
+      autoFromWalls: node.autoFromWalls === true,
+    };
   });
   const wallNodes = ofType("wall"), footprintValidationById = new Map<string, { valid: boolean; codes: string[]; areaSquareMeters: number }>();
   const validWallNodes = wallNodes.filter((node) => point(node.start) && point(node.end));
@@ -43,8 +54,8 @@ export function buildEvaluationHandoff(parsed: Parsed) {
   const stairs = ofType("stair").map((node) => ({ ...base(node, nodes), stairType: node.stairType ?? "straight", fromLevelId: node.fromLevelId ?? null, toLevelId: node.toLevelId ?? null, widthMeters: Number.isFinite(node.width) ? node.width : null, totalRiseMeters: Number.isFinite(node.totalRise) ? node.totalRise : null, stepCount: Number.isFinite(node.stepCount) ? node.stepCount : null, innerRadiusMeters: Number.isFinite(node.innerRadius) ? node.innerRadius : null, sweepAngleRadians: Number.isFinite(node.sweepAngle) ? node.sweepAngle : null }));
   const shafts = ofType("shaft").map((node) => ({ ...base(node, nodes), outline: Array.isArray(node.polygon) ? node.polygon.map(point).filter((item): item is Point => Boolean(item)) : [], heightMeters: Number.isFinite(node.height) ? node.height : null }));
   const wallConnections = walls.flatMap((wall, index) => walls.slice(index + 1).flatMap((other) => ["start", "end"].flatMap((wallEnd) => ["start", "end"].flatMap((otherEnd) => { const a = wall[wallEnd as "start" | "end"], b = other[otherEnd as "start" | "end"]; return a && b && Math.hypot(a[0] - b[0], a[1] - b[1]) <= 1e-6 ? [{ wallId: wall.id, wallEnd, connectedWallId: other.id, connectedWallEnd: otherEnd }] : []; }))));
-  const classifiedIds = new Set([...walls, ...zones, ...doors, ...windows, ...furniture, ...equipment, ...columns, ...shelves, ...stairs, ...shafts, ...levels].map((node) => node.id));
-  return { schemaVersion: "1.0", source: { format: "Pascal JSON", rootNodeIds: Array.isArray((parsed.raw as any)?.rootNodeIds) ? (parsed.raw as any).rootNodeIds : [] }, units: { length: "meter", area: "square-meter", angles: "radian", planCoordinates: "Pascal Level plane [x,z]", svgProjection: "[x,z] -> [x,y] identity; default viewer rotation is clockwise 90 degrees" }, levels, zones, spaces: zones.map((zone) => ({ ...zone, sourceZoneId: zone.id, source: "derived-from-zone" })), walls, doors, windows, furniture, equipment, columns, shelves, stairs, shafts, relationships: { parentChild: all.filter((node) => node.parentId).map((node) => ({ parentId: node.parentId!, childId: node.id })), levelMembership: all.map((node) => ({ nodeId: node.id, levelId: levelIdOf(node, nodes) })).filter((item) => item.levelId), hostedOpenings: [...doors, ...windows].filter((node) => node.hostWallId).map((node) => ({ openingId: node.id, wallId: node.hostWallId! })), wallConnections }, unclassifiedNodes: all.filter((node) => !classifiedIds.has(node.id)).map((node) => ({ id: node.id, rawPascalId: node.id, type: node.type })), diagnostics: parsed.diagnostics };
+  const classifiedIds = new Set([...walls, ...zones, ...slabs, ...doors, ...windows, ...furniture, ...equipment, ...columns, ...shelves, ...stairs, ...shafts, ...levels].map((node) => node.id));
+  return { schemaVersion: "1.0", source: { format: "Pascal JSON", rootNodeIds: Array.isArray((parsed.raw as any)?.rootNodeIds) ? (parsed.raw as any).rootNodeIds : [] }, units: { length: "meter", area: "square-meter", angles: "radian", planCoordinates: "Pascal Level plane [x,z]", svgProjection: "[x,z] -> [x,y] identity; default viewer rotation is clockwise 90 degrees" }, levels, zones, slabs, spaces: zones.map((zone) => ({ ...zone, sourceZoneId: zone.id, source: "derived-from-zone" })), walls, doors, windows, furniture, equipment, columns, shelves, stairs, shafts, relationships: { parentChild: all.filter((node) => node.parentId).map((node) => ({ parentId: node.parentId!, childId: node.id })), levelMembership: all.map((node) => ({ nodeId: node.id, levelId: levelIdOf(node, nodes) })).filter((item) => item.levelId), hostedOpenings: [...doors, ...windows].filter((node) => node.hostWallId).map((node) => ({ openingId: node.id, wallId: node.hostWallId! })), wallConnections }, unclassifiedNodes: all.filter((node) => !classifiedIds.has(node.id)).map((node) => ({ id: node.id, rawPascalId: node.id, type: node.type })), diagnostics: parsed.diagnostics };
 }
 
 export type EvaluationHandoff = ReturnType<typeof buildEvaluationHandoff>;
