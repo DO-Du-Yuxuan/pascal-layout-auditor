@@ -34,6 +34,7 @@ import { evaluateG1Foundation, EvaluationReport, RuleStatus } from "./evaluation
 import { designerRulePresentation, evaluationIssueTargets, EvaluationFocusTarget } from "./evaluation-ui/presentation";
 import { evaluationHighlightFor, evaluationHighlightRole, EvaluationHighlight, resolveEvaluationFocus } from "./evaluation-ui/focus";
 import { buildBuildingEnvelopes, BuildingEnvelope } from "./evaluation/envelope";
+import { buildRoomRegionAnalysis, RoomRegionAnalysis } from "./evaluation/room-regions";
 
 type Visibility = {
   images: boolean;
@@ -90,6 +91,8 @@ function App() {
     [evaluationReport, setEvaluationReport] = useState<EvaluationReport | null>(null),
     [buildingEnvelopes, setBuildingEnvelopes] = useState<BuildingEnvelope[]>([]),
     [showBuildingEnvelope, setShowBuildingEnvelope] = useState(false),
+    [roomRegionAnalysis, setRoomRegionAnalysis] = useState<RoomRegionAnalysis | null>(null),
+    [showRoomRegions, setShowRoomRegions] = useState(false),
     [evaluationError, setEvaluationError] = useState<string | null>(null),
     [evaluationHighlights, setEvaluationHighlights] = useState<EvaluationHighlight[]>([]),
     [activeEvaluationHighlight, setActiveEvaluationHighlight] = useState<EvaluationHighlight | null>(null),
@@ -113,6 +116,8 @@ function App() {
       setEvaluationReport(null);
       setBuildingEnvelopes([]);
       setShowBuildingEnvelope(false);
+      setRoomRegionAnalysis(null);
+      setShowRoomRegions(false);
       setEvaluationError(null);
       setEvaluationHighlights([]);
       setActiveEvaluationHighlight(null);
@@ -137,6 +142,8 @@ function App() {
       setEvaluationReport(null);
       setBuildingEnvelopes([]);
       setShowBuildingEnvelope(false);
+      setRoomRegionAnalysis(null);
+      setShowRoomRegions(false);
       setEvaluationError(null);
       setEvaluationHighlights([]);
       setActiveEvaluationHighlight(null);
@@ -194,10 +201,11 @@ function App() {
   const runFoundationEvaluation = () => {
     if (!data) return;
     try {
-      const handoff = buildEvaluationHandoff(data), report = evaluateG1Foundation(handoff);
+      const handoff = buildEvaluationHandoff(data), analysis = buildRoomRegionAnalysis(handoff), report = evaluateG1Foundation(handoff);
       setEvaluationReport(report);
       setBuildingEnvelopes(buildBuildingEnvelopes(handoff));
-      setEvaluationHighlights(evaluationIssueTargets(report.rules, nodes).map((target) => evaluationHighlightFor(target.ruleId, target, target.targetIndex)));
+      setRoomRegionAnalysis(analysis);
+      setEvaluationHighlights(evaluationIssueTargets(report.rules, nodes, analysis).map((target) => evaluationHighlightFor(target.ruleId, target, target.targetIndex)));
       setActiveEvaluationHighlight(null);
       setEvaluationError(null);
       setEvaluationFocusMessage(null);
@@ -210,7 +218,7 @@ function App() {
     window.setTimeout(() => evaluationRuleElements.current[ruleId]?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
   };
   const focusEvaluationTarget = (ruleId: string, target: EvaluationFocusTarget, targetIndex: number, revealRule = false) => {
-    const focus = resolveEvaluationFocus(nodes, target.primaryId);
+    const focus = resolveEvaluationFocus(nodes, target.primaryId, roomRegionAnalysis);
     setEvaluationFocusMessage(focus.renderable ? null : focus.reason ?? "该对象暂时无法在画布中显示。");
     if (!focus.renderable || !focus.levelId || !focus.viewBox) { setActiveEvaluationHighlight(null); return; }
     setActiveEvaluationHighlight(evaluationHighlightFor(ruleId, target, targetIndex));
@@ -228,14 +236,13 @@ function App() {
   };
   const activateEvaluationHighlight = (highlight: EvaluationHighlight) => {
     const rule = evaluationReport?.rules.find((item) => item.ruleId === highlight.ruleId);
-    const target = rule && designerRulePresentation(rule, nodes).targets[highlight.targetIndex];
+    const target = rule && designerRulePresentation(rule, nodes, roomRegionAnalysis).targets[highlight.targetIndex];
     if (target) focusEvaluationTarget(highlight.ruleId, target, highlight.targetIndex, true);
   };
   const selectCanvasObject = (id: string | null) => {
     setSelectedId(id);
     setSelectedDimension(null);
     setSelectedManualId(null);
-    if (!id || !evaluationHighlights.some((highlight) => id === highlight.primaryId || highlight.relatedIds.includes(id))) { setEvaluationHighlights([]); setActiveEvaluationHighlight(null); }
   };
   return (
     <div className="app">
@@ -294,6 +301,7 @@ function App() {
                 </label>
               ))}
               <label><input type="checkbox" checked={showBuildingEnvelope} onChange={() => setShowBuildingEnvelope((shown) => !shown)} />显示建筑边界</label>
+              <label><input type="checkbox" checked={showRoomRegions} onChange={() => setShowRoomRegions((shown) => !shown)} />显示识别空间</label>
             </div>
           </section>
           <Inspector
@@ -305,7 +313,7 @@ function App() {
             measurementUnit={measurementUnit}
           />
           <Stats nodes={nodes} />
-          <EvaluationPanel report={evaluationReport} nodes={nodes} error={evaluationError} focusMessage={evaluationFocusMessage} activeHighlight={activeEvaluationHighlight} disabled={!data || !Object.keys(nodes).length} onRun={runFoundationEvaluation} onFocus={focusEvaluationTarget} onRegisterRule={(ruleId, element) => { evaluationRuleElements.current[ruleId] = element; }} />
+          <EvaluationPanel report={evaluationReport} nodes={nodes} roomAnalysis={roomRegionAnalysis} error={evaluationError} focusMessage={evaluationFocusMessage} activeHighlight={activeEvaluationHighlight} disabled={!data || !Object.keys(nodes).length} onRun={runFoundationEvaluation} onFocus={focusEvaluationTarget} onRegisterRule={(ruleId, element) => { evaluationRuleElements.current[ruleId] = element; }} />
           <Diagnostics diagnostics={diagnostics} />
         </aside>
         <section className="canvas-workspace">
@@ -335,6 +343,8 @@ function App() {
                 activeEvaluationHighlight={activeEvaluationHighlight}
                 buildingEnvelopes={buildingEnvelopes}
                 showBuildingEnvelope={showBuildingEnvelope}
+                roomAnalysis={roomRegionAnalysis}
+                showRoomRegions={showRoomRegions}
                 measurementMode={measurementMode}
                 measurementUnit={measurementUnit}
                 manualMeasurements={manualMeasurements.filter((item) => item.levelId === (canvas.levelId || levels[0]?.id || ""))}
@@ -367,6 +377,8 @@ function CanvasPanel({
   activeEvaluationHighlight,
   buildingEnvelopes,
   showBuildingEnvelope,
+  roomAnalysis,
+  showRoomRegions,
   onSelect,
   onClearEvaluationHighlight,
   onActivateEvaluationHighlight,
@@ -391,6 +403,8 @@ function CanvasPanel({
   activeEvaluationHighlight: EvaluationHighlight | null;
   buildingEnvelopes: BuildingEnvelope[];
   showBuildingEnvelope: boolean;
+  roomAnalysis: RoomRegionAnalysis | null;
+  showRoomRegions: boolean;
   onSelect: (id: string | null) => void;
   onClearEvaluationHighlight: () => void;
   onActivateEvaluationHighlight: (highlight: EvaluationHighlight) => void;
@@ -475,6 +489,8 @@ function CanvasPanel({
         activeEvaluationHighlight={activeEvaluationHighlight}
         buildingEnvelope={buildingEnvelopes.find((envelope) => envelope.levelId === levelId) ?? null}
         showBuildingEnvelope={showBuildingEnvelope}
+        roomAnalysis={roomAnalysis}
+        showRoomRegions={showRoomRegions}
         onSelect={onSelect}
         onClearEvaluationHighlight={onClearEvaluationHighlight}
         onActivateEvaluationHighlight={onActivateEvaluationHighlight}
@@ -552,6 +568,8 @@ function Plan({
   activeEvaluationHighlight,
   buildingEnvelope,
   showBuildingEnvelope,
+  roomAnalysis,
+  showRoomRegions,
   onSelect,
   onClearEvaluationHighlight,
   onActivateEvaluationHighlight,
@@ -575,6 +593,8 @@ function Plan({
   activeEvaluationHighlight: EvaluationHighlight | null;
   buildingEnvelope: BuildingEnvelope | null;
   showBuildingEnvelope: boolean;
+  roomAnalysis: RoomRegionAnalysis | null;
+  showRoomRegions: boolean;
   onSelect: (id: string | null) => void;
   onClearEvaluationHighlight: () => void;
   onActivateEvaluationHighlight: (highlight: EvaluationHighlight) => void;
@@ -604,7 +624,7 @@ function Plan({
     cx = viewBox.minX + viewBox.width / 2,
     cz = viewBox.minZ + viewBox.height / 2,
     vb = `${viewBox.minX} ${viewBox.minZ} ${viewBox.width} ${viewBox.height}`;
-  const highlightsOnLevel = evaluationHighlights.filter((highlight) => resolveAncestorLevelId(highlight.primaryId, nodes).levelId === levelId);
+  const highlightsOnLevel = evaluationHighlights.filter((highlight) => (resolveAncestorLevelId(highlight.primaryId, nodes).levelId ?? roomAnalysis?.rooms.find((room) => room.roomRegionId === highlight.primaryId)?.levelId) === levelId);
   const snapSegments = useMemo(() => buildMeasurementSnapSegments(nodes, levelId), [nodes, levelId]);
   const activeMeasurementMode = resolveMeasurementMode(measurementStart?.point ?? null, measurementHover?.point ?? null, orthogonalLock);
   useEffect(() => { setMeasurementStart(null); setMeasurementHover(null); setOrthogonalLock(false); }, [measurementMode, levelId]);
@@ -774,17 +794,26 @@ function Plan({
           </g>
           {highlightsOnLevel.length > 0 && <EvaluationHighlightOverlay highlights={highlightsOnLevel} activeHighlight={activeEvaluationHighlight} nodes={nodes} exactWalls={exactWalls} onActivate={onActivateEvaluationHighlight} />}
           {showBuildingEnvelope && buildingEnvelope?.usableForEvaluation && <BuildingEnvelopeOverlay envelope={buildingEnvelope} />}
+          {roomAnalysis && (showRoomRegions || highlightsOnLevel.some((highlight) => highlight.ruleId === "G1-012")) && <RoomRegionOverlay analysis={roomAnalysis} nodes={nodes} levelId={levelId} showAll={showRoomRegions} highlights={highlightsOnLevel} onActivate={onActivateEvaluationHighlight} />}
         </g>
       </svg>
       {measurementMode !== "off" && <div className="measure-hint">{measurementStart ? `${orthogonalLock ? activeMeasurementMode === "horizontal" ? "水平正交已开启" : "垂直正交已开启" : "自由对齐"} · 点击第二点 · Shift 切换正交 · Esc 退出` : `${orthogonalLock ? "正交已开启" : "正交已关闭"} · 点击第一点 · Shift 切换正交 · Esc 退出`}</div>}
       <Compass rotation={rotation} />
       {highlightsOnLevel.length > 0 && <div className="evaluation-highlight-legend"><span><i className="primary" />问题对象（点击红框查看说明）</span><span><i className="related" />关联对象</span><span><i className="muted" />其他对象</span><button onClick={onClearEvaluationHighlight}>关闭高亮</button></div>}
+      {showRoomRegions && <div className="room-region-legend"><span><i className="room" />Room Region（物理空间）</span><span><i className="zone" />Zone（功能区域）</span><span><i className="warning" />未匹配/部分匹配</span></div>}
       <div className="legend">{formatPanelLength(viewBox.width, measurementUnit)} × {formatPanelLength(viewBox.height, measurementUnit)}</div>
     </div>
   );
 }
 function BuildingEnvelopeOverlay({ envelope }: { envelope: BuildingEnvelope }) {
   return <g className="building-envelope-overlay" pointerEvents="none">{envelope.polygons.map((polygon, index) => <g key={index}>{polygon.map((ring, ringIndex) => <polygon key={ringIndex} points={ring.map(([x, z]) => `${x},${z}`).join(" ")} fill={ringIndex === 0 ? "#ed8b2c" : "#f7f8f5"} fillOpacity={ringIndex === 0 ? ".05" : "1"} stroke="#ed8b2c" strokeWidth={ringIndex === 0 ? "2" : "1"} vectorEffect="non-scaling-stroke" />)}</g>)}</g>;
+}
+function RoomRegionOverlay({ analysis, nodes, levelId, showAll, highlights, onActivate }: { analysis: RoomRegionAnalysis; nodes: Record<string, NodeData>; levelId: string; showAll: boolean; highlights: EvaluationHighlight[]; onActivate: (highlight: EvaluationHighlight) => void }) {
+  const rooms = analysis.rooms.filter((room) => room.levelId === levelId), matches = new Map(analysis.zoneMatches.map((match) => [match.zoneId, match]));
+  return <g className="room-region-overlay">
+    {rooms.map((room, index) => { const highlight = highlights.find((item) => item.primaryId === room.roomRegionId), warning = !room.usableForEvaluation || analysis.unmatchedRoomRegionIds.includes(room.roomRegionId), outer = room.polygons[0]?.[0] ?? [], center = outer.length ? { x: outer.reduce((sum, point) => sum + point[0], 0) / outer.length, z: outer.reduce((sum, point) => sum + point[1], 0) / outer.length } : null; if (!showAll && !highlight) return null; return <g key={room.roomRegionId} data-room-region={room.roomRegionId} className={highlight ? "problem-room" : warning ? "warning-room" : "matched-room"} onClick={highlight ? (event) => { event.stopPropagation(); onActivate(highlight); } : undefined}>{room.polygons.flatMap((polygon, polygonIndex) => polygon.map((ring, ringIndex) => <polygon key={`${polygonIndex}-${ringIndex}`} points={ring.map(([x, z]) => `${x},${z}`).join(" ")} fill={ringIndex ? "#f7f8f5" : highlight ? "#e23d35" : warning ? "#d8a449" : "#4f8f72"} fillOpacity={ringIndex ? 1 : .14} stroke={highlight ? "#e23d35" : warning ? "#d8a449" : "#4f8f72"} strokeWidth={highlight ? "3" : "1.5"} vectorEffect="non-scaling-stroke" />))}{showAll && center && <text x={center.x} y={center.z} className="room-region-label" textAnchor="middle" dominantBaseline="middle">R{index + 1} · {room.areaSquareMeters.toFixed(1)} m²</text>}</g>; })}
+    {showAll && Object.values(nodes).filter((node) => node.type === "zone" && resolveAncestorLevelId(node.id, nodes).levelId === levelId).map((zone) => { const points = zonePoints(zone), match = matches.get(zone.id), warning = match?.relationship === "unmatched-zone" || match?.relationship === "zone-crosses-rooms" || match?.relationship === "partial"; return points.length >= 3 ? <polygon key={zone.id} data-zone-match={match?.relationship ?? "unmatched-zone"} points={points.map((point) => `${point.x},${point.z}`).join(" ")} fill="none" stroke={warning ? "#d86756" : "#3569a8"} strokeDasharray="6 4" strokeWidth="2" vectorEffect="non-scaling-stroke" /> : null; })}
+  </g>;
 }
 function EvaluationHighlightOverlay({ highlights, activeHighlight, nodes, exactWalls, onActivate }: { highlights: EvaluationHighlight[]; activeHighlight: EvaluationHighlight | null; nodes: Record<string, NodeData>; exactWalls: ReturnType<typeof buildExperimentalWalls>; onActivate: (highlight: EvaluationHighlight) => void }) {
   const wallById = new Map(exactWalls.map((wall) => [wall.wallId, wall]));
@@ -810,6 +839,10 @@ function EvaluationHighlightOverlay({ highlights, activeHighlight, nodes, exactW
     if (node.type === "stair") {
       const corners = stairCorners(node, nodes);
       if (corners.length >= 3) return <polygon key={id} className={active ? "active" : undefined} data-evaluation-highlight={id} data-highlight-role={role} points={corners.map((point) => `${point.x},${point.z}`).join(" ")} fill={color} fillOpacity={fillOpacity} stroke={color} strokeWidth="3" vectorEffect="non-scaling-stroke" onClick={activate} />;
+    }
+    if (node.type === "zone") {
+      const points = zonePoints(node);
+      if (points.length >= 3) return <polygon key={id} className={active ? "active" : undefined} data-evaluation-highlight={id} data-highlight-role={role} points={points.map((point) => `${point.x},${point.z}`).join(" ")} fill={color} fillOpacity={fillOpacity} stroke={color} strokeWidth="3" vectorEffect="non-scaling-stroke" onClick={activate} />;
     }
     return null;
   })}</g>;
@@ -1228,7 +1261,7 @@ function Stats({ nodes }: { nodes: Record<string, NodeData> }) {
 const evaluationStatusLabel: Record<RuleStatus, string> = { pass: "通过", issue: "存在问题", unable_to_determine: "无法判断", not_applicable: "不适用" };
 const evaluationOriginLabel = { source_data: "源数据", parser: "解析", handoff: "交接映射", rule: "评价规则", geometry_tolerance: "几何容差", insufficient_information: "信息不足" };
 const evaluationValue = (value: unknown) => value === null || value === undefined ? "—" : typeof value === "string" ? value : String(value);
-function EvaluationPanel({ report, nodes, error, focusMessage, activeHighlight, disabled, onRun, onFocus, onRegisterRule }: { report: EvaluationReport | null; nodes: Record<string, NodeData>; error: string | null; focusMessage: string | null; activeHighlight: EvaluationHighlight | null; disabled: boolean; onRun: () => void; onFocus: (ruleId: string, target: EvaluationFocusTarget, targetIndex: number) => void; onRegisterRule: (ruleId: string, element: HTMLElement | null) => void }) {
+function EvaluationPanel({ report, nodes, roomAnalysis, error, focusMessage, activeHighlight, disabled, onRun, onFocus, onRegisterRule }: { report: EvaluationReport | null; nodes: Record<string, NodeData>; roomAnalysis: RoomRegionAnalysis | null; error: string | null; focusMessage: string | null; activeHighlight: EvaluationHighlight | null; disabled: boolean; onRun: () => void; onFocus: (ruleId: string, target: EvaluationFocusTarget, targetIndex: number) => void; onRegisterRule: (ruleId: string, element: HTMLElement | null) => void }) {
   return (
     <section className="side-section evaluation-panel">
       <div className="side-heading"><h2>G1 基础检查</h2><button className="primary" disabled={disabled} onClick={onRun}>运行基础检查</button></div>
@@ -1241,7 +1274,7 @@ function EvaluationPanel({ report, nodes, error, focusMessage, activeHighlight, 
           {(Object.keys(evaluationStatusLabel) as RuleStatus[]).map((status) => <span key={status}>{evaluationStatusLabel[status]} <b>{report.counts[status]}</b></span>)}
         </div>
         <div className="evaluation-rules">
-          {report.rules.map((item) => { const presentation = designerRulePresentation(item, nodes), locations = [...new Set(presentation.targets.map((target) => target.levelName))], activeIndex = activeHighlight?.ruleId === item.ruleId ? activeHighlight.targetIndex : 0, targetIndex = Math.min(activeIndex, Math.max(0, presentation.targets.length - 1)), target = presentation.targets[targetIndex], isActive = activeHighlight?.ruleId === item.ruleId; return <article key={item.ruleId} ref={(element) => onRegisterRule(item.ruleId, element)} className={`evaluation-rule status-${item.status}${isActive ? " active-evaluation-rule" : ""}`}>
+          {report.rules.map((item) => { const presentation = designerRulePresentation(item, nodes, roomAnalysis), locations = [...new Set(presentation.targets.map((target) => target.levelName))], activeIndex = activeHighlight?.ruleId === item.ruleId ? activeHighlight.targetIndex : 0, targetIndex = Math.min(activeIndex, Math.max(0, presentation.targets.length - 1)), target = presentation.targets[targetIndex], isActive = activeHighlight?.ruleId === item.ruleId; return <article key={item.ruleId} ref={(element) => onRegisterRule(item.ruleId, element)} className={`evaluation-rule status-${item.status}${isActive ? " active-evaluation-rule" : ""}`}>
             <div className="evaluation-rule-heading"><strong>{presentation.title}</strong><em>{evaluationStatusLabel[item.status]}</em></div>
             <p>{presentation.description}</p>
             <div className="designer-guidance"><span><b>为什么要处理</b>{presentation.rationale}</span><span><b>建议</b>{presentation.recommendation}</span>{presentation.supplemental && <span className="supplemental">{presentation.supplemental}</span>}</div>

@@ -5,6 +5,7 @@ import { stairCorners } from "../geometry/stairs";
 import { zonePoints } from "../geometry/zone";
 import type { NodeData } from "../types";
 import type { EvaluationFocusTarget } from "./presentation";
+import type { RoomRegionAnalysis } from "../evaluation/room-regions";
 
 export type EvaluationHighlight = { ruleId: string; primaryId: string; relatedIds: string[]; targetIndex: number };
 export type EvaluationFocusResolution = { renderable: boolean; levelId: string | null; viewBox: ViewBox | null; reason?: string };
@@ -16,9 +17,13 @@ const viewAround = (points: Array<{ x: number; z: number }>, minimumSpan = 2.4, 
   return { minX: cx - width / 2, minZ: cz - height / 2, width, height };
 };
 
-export function resolveEvaluationFocus(nodes: Record<string, NodeData>, objectId: string): EvaluationFocusResolution {
+export function resolveEvaluationFocus(nodes: Record<string, NodeData>, objectId: string, roomAnalysis?: RoomRegionAnalysis | null): EvaluationFocusResolution {
   const node = nodes[objectId];
-  if (!node) return { renderable: false, levelId: null, viewBox: null, reason: "评价引用的对象已不存在。" };
+  if (!node) {
+    const room = roomAnalysis?.rooms.find((item) => item.roomRegionId === objectId), roomPoints = room?.polygons.flatMap((polygon) => polygon.flatMap((ring) => ring.map(([x, z]) => ({ x, z }))));
+    if (room && roomPoints?.length) return { renderable: true, levelId: room.levelId, viewBox: viewAround(roomPoints) };
+    return { renderable: false, levelId: null, viewBox: null, reason: "评价引用的对象已不存在。" };
+  }
   const levelId = resolveAncestorLevelId(node.id, nodes).levelId ?? null;
   if (!levelId) return { renderable: false, levelId: null, viewBox: null, reason: "无法确定对象所属楼层。" };
   let points: Array<{ x: number; z: number }> = [];
@@ -46,4 +51,3 @@ export function evaluationHighlightRole(highlight: EvaluationHighlight | null, o
   if (highlight.primaryId === objectId) return "primary";
   return highlight.relatedIds.includes(objectId) ? "related" : null;
 }
-

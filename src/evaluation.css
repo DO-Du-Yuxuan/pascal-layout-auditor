@@ -39,6 +39,14 @@
 .evaluation-highlight-overlay [data-evaluation-highlight] { cursor: pointer; pointer-events: all; }
 .evaluation-highlight-overlay .active { filter: drop-shadow(0 0 7px rgba(226,61,53,.92)); }
 .building-envelope-overlay { filter: drop-shadow(0 0 2px rgba(237,139,44,.45)); }
+.room-region-overlay [data-room-region] { cursor: pointer; }
+.room-region-label { fill: #214a39; font-size: .22px; font-weight: 700; paint-order: stroke; pointer-events: none; stroke: #fff; stroke-width: .04px; }
+.room-region-legend { align-items: center; background: #fffffff0; border: 1px solid #d7ded7; border-radius: 4px; display: flex; flex-wrap: wrap; font-size: 8px; gap: 7px; left: 52px; padding: 4px 5px; position: absolute; top: 45px; z-index: 4; }
+.room-region-legend span { align-items: center; display: flex; gap: 3px; }
+.room-region-legend i { display: inline-block; height: 7px; width: 11px; }
+.room-region-legend i.room { background: #4f8f7240; border: 1px solid #4f8f72; }
+.room-region-legend i.zone { border: 1px dashed #3569a8; }
+.room-region-legend i.warning { background: #d8a44940; border: 1px solid #d8a449; }
 .evaluation-highlight-legend { align-items: center; background: #fffffff0; border: 1px solid #d7ded7; border-radius: 4px; bottom: 7px; display: flex; flex-wrap: wrap; font-size: 8px; gap: 6px; left: 52px; max-width: calc(100% - 150px); padding: 4px 5px; position: absolute; z-index: 4; }
 .evaluation-highlight-legend span { align-items: center; display: flex; gap: 3px; }
 .evaluation-highlight-legend i { border-radius: 2px; display: inline-block; height: 7px; width: 10px; }

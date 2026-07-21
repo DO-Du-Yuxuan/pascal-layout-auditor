@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import bellevueProject from "../../sample-data/9618b316-3eab-4fcf-9a21-0f7316479968.json";
+import bellevueDemoProject from "../../sample-data/Bellevue demo.json";
 import { evaluateG1Foundation } from "../evaluation/evaluate";
+import { buildRoomRegionAnalysis } from "../evaluation/room-regions";
 import { buildEvaluationHandoff } from "../parser/evaluation-handoff";
 import { parseProject } from "../parser/parse";
 import { evaluationHighlightFor, evaluationHighlightRole, resolveEvaluationFocus } from "./focus";
@@ -54,5 +56,25 @@ describe("Bellevue evaluation UI adapter", () => {
   it("offers an out-of-envelope furniture object as a canvas target", () => {
     const object = parsed.nodes.item_010u26nmiwafik24!, synthetic = { ...rule("G1-004"), ruleId: "G1-023", ruleName: "家具与设备位于有效建筑范围", normalizedObjectIds: [object.id], pascalSourceIds: [object.id], status: "issue" as const };
     expect(designerRulePresentation(synthetic, nodes).targets[0]).toMatchObject({ primaryId: object.id, levelName: "Level 2" });
+  });
+});
+
+describe("Bellevue Room Region UI adapter", () => {
+  const parsed = parseProject(bellevueDemoProject), handoff = buildEvaluationHandoff(parsed), analysis = buildRoomRegionAnalysis(handoff), report = evaluateG1Foundation(handoff), nodes = parsed.nodes;
+  const rule = (id: string) => report.rules.find((item) => item.ruleId === id)!;
+
+  it("turns overlapping Zones into canvas targets and keeps numerical slivers out of problem targets", () => {
+    const overlapTargets = designerRulePresentation(rule("G1-009"), nodes, analysis).targets;
+    expect(overlapTargets).toHaveLength(2);
+    expect(overlapTargets.every((target) => nodes[target.primaryId]?.type === "zone")).toBe(true);
+
+    expect(designerRulePresentation(rule("G1-012"), nodes, analysis).targets).toHaveLength(0);
+  });
+
+  it("indexes new issue targets without marking the passing name rule", () => {
+    const targets = evaluationIssueTargets(report.rules, nodes, analysis);
+    expect(targets.filter((target) => target.ruleId === "G1-009")).toHaveLength(2);
+    expect(targets.filter((target) => target.ruleId === "G1-012")).toHaveLength(0);
+    expect(targets.some((target) => target.ruleId === "G1-019")).toBe(false);
   });
 });

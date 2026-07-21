@@ -65,7 +65,7 @@ describe("G1 foundation evaluator", () => {
     const handoff = fixture();
     handoff.doors = [handoff.doors[0]];
     handoff.windows = [];
-    handoff.walls[0].footprintValidation = { valid: false, codes: ["wall_self_intersection"], areaSquareMeters: 0 };
+    handoff.walls[0].footprintValidation = { valid: false, codes: ["wall_self_intersection"], areaSquareMeters: 0, footprint: [] };
     const found = rule(evaluateG1Foundation(handoff), "G1-013");
     expect(found.status).toBe("unable_to_determine");
     expect(found.diagnostics[0].message).toContain("wall_self_intersection");

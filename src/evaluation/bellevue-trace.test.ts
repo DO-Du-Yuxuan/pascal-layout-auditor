@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import bellevueProject from "../../sample-data/9618b316-3eab-4fcf-9a21-0f7316479968.json";
+import bellevueDemoProject from "../../sample-data/Bellevue demo.json";
 import { buildEvaluationHandoff } from "../parser/evaluation-handoff";
 import { parseProject } from "../parser/parse";
 import { evaluateG1Foundation } from "./evaluate";
@@ -40,5 +41,28 @@ describe("Bellevue G1 trace", () => {
     expect(relation).toMatchObject({ status: "outside", openingCenterMeters: 0.957665610141416, openingStartMeters: 0.04266561014141601, openingEndMeters: 1.872665610141416, wallLengthMeters: 1.8324012039371924, leftOvershootMeters: 0 });
     expect(relation.rightOvershootMeters).toBeCloseTo(0.0402644062042236, 12);
     expect(found.diagnostics.find((item) => item.normalizedObjectIds.includes(window.id))).toMatchObject({ origin: "source_data", field: "opening.position[0] + opening.width / 2" });
+  });
+
+  it("keeps Bellevue room-region and Zone matching results stable", () => {
+    const handoff = buildEvaluationHandoff(parseProject(bellevueDemoProject));
+    const report = evaluateG1Foundation(handoff, "2026-07-20T00:00:00.000Z");
+    const statuses = Object.fromEntries(report.rules.map((rule) => [rule.ruleId, rule.status]));
+    expect(statuses).toMatchObject({
+      "G1-007": "pass",
+      "G1-009": "issue",
+      "G1-012": "pass",
+      "G1-019": "pass",
+    });
+
+    const overlap = report.rules.find((rule) => rule.ruleId === "G1-009")!;
+    expect(overlap.measurements).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "zonePairOverlapCount", value: 1 }),
+      expect.objectContaining({ name: "zoneCrossRoomCount", value: 0 }),
+    ]));
+    const fragments = report.rules.find((rule) => rule.ruleId === "G1-012")!;
+    expect(fragments.measurements).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "numericalSliverCount", value: 3 }),
+      expect.objectContaining({ name: "tinyFragmentCount", value: 0 }),
+    ]));
   });
 });

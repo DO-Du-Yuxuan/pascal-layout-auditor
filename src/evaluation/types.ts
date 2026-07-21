@@ -69,6 +69,13 @@ export type GeometryTolerances = {
   areaSquareMeters: number;
   pointOnBoundaryMeters: number;
   overlapAreaSquareMeters: number;
+  roomMinimumAreaSquareMeters: number;
+  roomNumericalSliverAreaSquareMeters: number;
+  roomSlendernessMinimum: number;
+  roomWallGapMeters: number;
+  zoneRoomMatchMinimumRatio: number;
+  zoneCrossRoomMinimumRatio: number;
+  zoneOverlapMaximumRatio: number;
 };
 
 export type G1Rule = (handoff: EvaluationHandoff) => RuleResult;

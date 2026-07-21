@@ -7,14 +7,21 @@
   "counts": {
     "pass": 4,
     "issue": 1,
-    "unable_to_determine": 4,
+    "unable_to_determine": 7,
     "not_applicable": 0
   },
   "tolerances": {
     "lengthMeters": 0.000001,
     "areaSquareMeters": 1e-8,
     "pointOnBoundaryMeters": 0.01,
-    "overlapAreaSquareMeters": 0.01
+    "overlapAreaSquareMeters": 0.01,
+    "roomMinimumAreaSquareMeters": 0.5,
+    "roomNumericalSliverAreaSquareMeters": 0.001,
+    "roomSlendernessMinimum": 0.03,
+    "roomWallGapMeters": 0.02,
+    "zoneRoomMatchMinimumRatio": 0.5,
+    "zoneCrossRoomMinimumRatio": 0.2,
+    "zoneOverlapMaximumRatio": 0.05
   },
   "rules": [
     {
@@ -378,6 +385,135 @@
       ]
     },
     {
+      "ruleId": "G1-007",
+      "ruleName": "应封闭空间的边界闭合",
+      "status": "unable_to_determine",
+      "severity": "warning",
+      "summary": "Zone 缺少足以确认“必须独立封闭”的功能语义",
+      "details": [],
+      "normalizedObjectIds": [],
+      "pascalSourceIds": [],
+      "measurements": [],
+      "thresholds": [],
+      "missingData": [
+        "应封闭空间用途分类"
+      ],
+      "confidence": {
+        "level": "low",
+        "score": 0.4,
+        "reasons": [
+          "未根据名称以外的结构化用途字段识别到应封闭空间"
+        ]
+      },
+      "diagnostics": [
+        {
+          "severity": "warning",
+          "code": "enclosure_semantics_unavailable",
+          "message": "没有结构化空间用途可用于确认哪些 Zone 必须独立封闭",
+          "normalizedObjectIds": [],
+          "origin": "insufficient_information"
+        }
+      ]
+    },
+    {
+      "ruleId": "G1-009",
+      "ruleName": "不同空间不存在异常重叠",
+      "status": "unable_to_determine",
+      "severity": "warning",
+      "summary": "缺少可靠 Room Region，无法检查空间重叠",
+      "details": [],
+      "normalizedObjectIds": [],
+      "pascalSourceIds": [],
+      "measurements": [
+        {
+          "name": "zonePairOverlapCount",
+          "value": 0
+        },
+        {
+          "name": "zoneCrossRoomCount",
+          "value": 0
+        }
+      ],
+      "thresholds": [
+        {
+          "name": "overlapAreaTolerance",
+          "value": 0.01,
+          "unit": "m²"
+        },
+        {
+          "name": "zoneOverlapMaximumRatio",
+          "value": 0.05
+        },
+        {
+          "name": "zoneCrossRoomMinimumRatio",
+          "value": 0.2
+        }
+      ],
+      "missingData": [],
+      "confidence": {
+        "level": "low",
+        "score": 0.4,
+        "reasons": [
+          "开放式空间内多个不重叠 Zone 共享同一 Room 不视为异常"
+        ]
+      },
+      "diagnostics": []
+    },
+    {
+      "ruleId": "G1-012",
+      "ruleName": "不存在错误空间",
+      "status": "unable_to_determine",
+      "severity": "warning",
+      "summary": "部分楼层缺少可靠建筑边界，无法排查错误空间",
+      "details": [],
+      "normalizedObjectIds": [],
+      "pascalSourceIds": [],
+      "measurements": [
+        {
+          "name": "roomRegionCount",
+          "value": 0
+        },
+        {
+          "name": "numericalSliverCount",
+          "value": 0
+        },
+        {
+          "name": "tinyFragmentCount",
+          "value": 0
+        },
+        {
+          "name": "slenderFragmentCount",
+          "value": 0
+        }
+      ],
+      "thresholds": [
+        {
+          "name": "minimumRoomArea",
+          "value": 0.5,
+          "unit": "m²"
+        },
+        {
+          "name": "numericalSliverArea",
+          "value": 0.001,
+          "unit": "m²"
+        },
+        {
+          "name": "minimumRoomCompactness",
+          "value": 0.03
+        }
+      ],
+      "missingData": [],
+      "confidence": {
+        "level": "low",
+        "score": 0.4,
+        "reasons": [
+          "低于几何残留阈值的碎片只保留技术诊断，不作为设计师级别问题",
+          "有效碎片只作为几何异常，不自动当作主要房间"
+        ]
+      },
+      "diagnostics": []
+    },
+    {
       "ruleId": "G1-013",
       "ruleName": "门窗位于有效开口边界",
       "status": "unable_to_determine",
@@ -475,49 +611,31 @@
       "ruleName": "主要空间具有明确名称",
       "status": "unable_to_determine",
       "severity": "warning",
-      "summary": "当前 1 个 Zone 派生 Space 均有名称；但无法确认主要空间是否全部命名",
+      "summary": "未形成可用于命名检查的可靠 Room Region",
       "details": [],
       "normalizedObjectIds": [],
       "pascalSourceIds": [],
-      "measurements": [
-        {
-          "name": "derivedSpaceCount",
-          "value": 1
-        },
-        {
-          "name": "unnamedDerivedSpaceCount",
-          "value": 0
-        }
-      ],
-      "thresholds": [
-        {
-          "name": "requiredNonBlankName",
-          "value": true
-        }
-      ],
+      "measurements": [],
+      "thresholds": [],
       "missingData": [
-        "独立 Space 对象",
-        "主要空间分类或用途语义",
-        "完整封闭房间识别结果"
+        "可靠 Room Region",
+        "独立 Space 对象"
       ],
       "confidence": {
         "level": "low",
         "score": 0.4,
         "reasons": [
-          "Space 由 Zone 一对一派生",
-          "Zone 不保证是封闭房间或完整房间分区"
+          "level_jwi4ovhyra2ayxa5 没有可用建筑边界，未生成 Room Region",
+          "level_tf1ug5dswkkzfhqa 没有可用建筑边界，未生成 Room Region"
         ]
       },
       "diagnostics": [
         {
           "severity": "warning",
-          "code": "zone_derived_space_limit",
-          "message": "当前 Zone 派生 Space 均有名称；这不代表已经发现未命名房间，也不能证明所有主要空间均已命名。",
-          "normalizedObjectIds": [
-            "zone_03shf4yl22n5zgcq"
-          ],
-          "origin": "insufficient_information",
-          "recommendation": "提供独立房间识别结果以及主要空间分类后再运行此规则。"
+          "code": "room_regions_unavailable",
+          "message": "当前无法建立独立物理空间区域，因此不能判断主要空间名称",
+          "normalizedObjectIds": [],
+          "origin": "insufficient_information"
         }
       ]
     },

@@ -17,7 +17,7 @@ describe("evaluation handoff projection", () => {
     expect(handoff.equipment.length).toBeGreaterThan(0);
     expect(handoff.stairs.length).toBeGreaterThan(0);
     expect(handoff.walls[0].rawPascalId).toBe(handoff.walls[0].id);
-    expect(handoff.walls[0].footprintValidation).toEqual(expect.objectContaining({ valid: expect.any(Boolean), codes: expect.any(Array), areaSquareMeters: expect.any(Number) }));
+    expect(handoff.walls[0].footprintValidation).toEqual(expect.objectContaining({ valid: expect.any(Boolean), codes: expect.any(Array), areaSquareMeters: expect.any(Number), footprint: expect.any(Array) }));
     expect(handoff.relationships.hostedOpenings.length).toBeGreaterThan(0);
     expect(handoff.relationships.levelMembership.length).toBeGreaterThan(0);
   });
@@ -28,6 +28,7 @@ describe("evaluation handoff projection", () => {
     expect(sampleHandoff.zones.length).toBeGreaterThan(1);
     expect(sampleHandoff.spaces.length).toBeGreaterThan(0);
     expect(sampleHandoff.walls.length).toBeGreaterThan(0);
+    expect(sampleHandoff.walls.every((wall) => Array.isArray(wall.footprintValidation.footprint))).toBe(true);
     expect(sampleHandoff.doors.length).toBeGreaterThan(0);
     expect(sampleHandoff.windows.length).toBeGreaterThan(0);
     expect(sampleHandoff.furniture.length).toBeGreaterThan(0);

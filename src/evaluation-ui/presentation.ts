@@ -1,6 +1,7 @@
 import type { RuleResult } from "../evaluation/types";
 import type { NodeData } from "../types";
 import { resolveAncestorLevelId } from "../geometry/transform";
+import type { RoomRegionAnalysis } from "../evaluation/room-regions";
 
 export type EvaluationFocusTarget = {
   primaryId: string;
@@ -26,23 +27,26 @@ export type EvaluationIssueTarget = EvaluationFocusTarget & { ruleId: string; ta
 const measurement = (rule: RuleResult, name: string) => rule.measurements.find((item) => item.name === name)?.value;
 const humanLevelName = (levelId: string | undefined, nodes: Record<string, NodeData>) => levelId ? nodes[levelId]?.name || "未命名楼层" : "楼层未确定";
 
-export function evaluationFocusTargets(rule: RuleResult, nodes: Record<string, NodeData>): EvaluationFocusTarget[] {
+export function evaluationFocusTargets(rule: RuleResult, nodes: Record<string, NodeData>, roomAnalysis?: RoomRegionAnalysis | null): EvaluationFocusTarget[] {
   if (rule.status !== "issue") return [];
   const candidates = rule.normalizedObjectIds.map((id) => nodes[id]).filter((node): node is NodeData => Boolean(node));
   const primary = rule.ruleId === "G1-004" ? candidates.filter((node) => node.type === "wall")
     : rule.ruleId === "G1-005" ? candidates.filter((node) => node.type === "stair")
       : rule.ruleId === "G1-013" ? candidates.filter((node) => node.type === "window" || node.type === "door")
-        : rule.ruleId === "G1-023" ? candidates.filter((node) => node.type === "item") : [];
-  return primary.map((node, index) => {
+        : rule.ruleId === "G1-023" ? candidates.filter((node) => node.type === "item")
+          : ["G1-007", "G1-009", "G1-019"].includes(rule.ruleId) ? candidates.filter((node) => node.type === "zone") : [];
+  const nodeTargets = primary.map((node, index) => {
     const levelId = resolveAncestorLevelId(node.id, nodes).levelId ?? null, levelName = humanLevelName(levelId ?? undefined, nodes);
-    const typeLabel = rule.ruleId === "G1-004" ? `无效墙体 ${index + 1}` : rule.ruleId === "G1-023" ? `${node.name || "家具或设备"} ${index + 1}` : node.type === "stair" ? "楼梯" : node.type === "window" ? "窗户" : "门";
+    const typeLabel = rule.ruleId === "G1-004" ? `无效墙体 ${index + 1}` : rule.ruleId === "G1-023" ? `${node.name || "家具或设备"} ${index + 1}` : ["G1-007", "G1-009", "G1-019"].includes(rule.ruleId) ? `${node.name || "功能区"} ${index + 1}` : node.type === "stair" ? "楼梯" : node.type === "window" ? "窗户" : "门";
     const hostId = rule.ruleId === "G1-013" ? node.wallId ?? node.parentId : null;
     return { primaryId: node.id, relatedIds: hostId && nodes[hostId] ? [hostId] : [], label: `${typeLabel} · ${levelName}`, levelId, levelName };
   });
+  const roomTargets = rule.ruleId === "G1-012" ? (roomAnalysis?.rooms ?? []).filter((room) => rule.normalizedObjectIds.includes(room.roomRegionId)).map((room, index) => ({ primaryId: room.roomRegionId, relatedIds: room.boundaryWallIds, label: `异常空间 ${index + 1} · ${humanLevelName(room.levelId, nodes)}`, levelId: room.levelId, levelName: humanLevelName(room.levelId, nodes) })) : [];
+  return [...nodeTargets, ...roomTargets];
 }
 
-export function designerRulePresentation(rule: RuleResult, nodes: Record<string, NodeData>): DesignerRulePresentation {
-  const targets = evaluationFocusTargets(rule, nodes), count = targets.length;
+export function designerRulePresentation(rule: RuleResult, nodes: Record<string, NodeData>, roomAnalysis?: RoomRegionAnalysis | null): DesignerRulePresentation {
+  const targets = evaluationFocusTargets(rule, nodes, roomAnalysis), count = targets.length;
   if (rule.ruleId === "G1-004" && rule.status === "issue") return {
     title: `发现 ${count} 段无效墙体`,
     description: "这些墙段的起点和终点重合，实际长度为 0，可能是误操作产生的无效墙段。",
@@ -69,12 +73,15 @@ export function designerRulePresentation(rule: RuleResult, nodes: Record<string,
     };
   }
   if (rule.ruleId === "G1-019" && rule.status === "unable_to_determine") {
-    const derivedCount = Number(measurement(rule, "derivedSpaceCount") ?? 0);
+    const reliableRoomCount = Number(measurement(rule, "reliableRoomRegionCount") ?? 0);
+    const unmatchedRoomCount = Number(measurement(rule, "unmatchedRoomCount") ?? 0);
     return {
       title: "主要空间名称暂时无法完整核验",
-      description: `当前 ${derivedCount} 个 Zone 派生空间均有名称，但系统还不能确认这些 Zone 是否覆盖全部主要房间。`,
-      rationale: "目前缺少独立房间识别和主要空间分类，不能对房间全集作结论。",
-      recommendation: "补充独立房间识别和主要空间分类后再核验。",
+      description: reliableRoomCount === 0
+        ? "当前没有形成可用于命名核验的可靠 Room Region，系统不会把 Zone 直接当作房间。"
+        : `当前识别出 ${reliableRoomCount} 个可靠 Room Region，其中 ${unmatchedRoomCount} 个尚未匹配到可用于命名的 Zone。`,
+      rationale: "物理房间与设计师标注的功能 Zone 是两类对象；只有可靠匹配后才能核验房间名称。",
+      recommendation: reliableRoomCount === 0 ? "先检查建筑边界和墙体分隔是否能形成可靠空间。" : "核对未匹配 Room Region 附近的 Zone 范围和名称。",
       supplemental: "这不代表已经发现未命名房间。",
       problemCountLabel: "未确定", targets: [],
     };
@@ -103,6 +110,9 @@ export function designerRulePresentation(rule: RuleResult, nodes: Record<string,
     recommendation: "补充 Floor/Slab 轮廓以及对象位置、宽度、深度和类别。",
     problemCountLabel: "未确定", targets,
   };
+  if (rule.ruleId === "G1-007") return { title: rule.status === "pass" ? "需要独立封闭的空间边界完整" : "部分应封闭空间没有形成独立房间", description: rule.summary, rationale: "卧室、卫生间和储藏类空间需要可靠边界，才能支持隐私、功能和后续通行检查。", recommendation: rule.status === "pass" ? "无需处理。" : "检查对应 Zone 周边墙体闭合情况和 Zone 轮廓。", problemCountLabel: rule.status === "issue" ? String(count) : "0", targets };
+  if (rule.ruleId === "G1-009") return { title: rule.status === "issue" ? "发现功能区域异常重叠" : "未发现空间异常重叠", description: rule.summary, rationale: "重复或跨房间的功能区域会造成面积统计和空间归属错误。", recommendation: rule.status === "issue" ? "在图中检查红色 Zone 的轮廓是否重复或跨越分隔墙。" : "无需处理。", problemCountLabel: rule.status === "issue" ? String(count) : "0", targets };
+  if (rule.ruleId === "G1-012") return { title: rule.status === "issue" ? `发现 ${count} 个异常空间碎片` : "未发现错误空间", description: rule.summary, rationale: "极小或细长区域通常来自墙端缝隙、曲墙离散或边界误差，并非真实房间。", recommendation: rule.status === "issue" ? "逐个定位并检查相邻墙端与 Slab 边界。" : "无需处理。", problemCountLabel: rule.status === "issue" ? String(count) : "0", targets };
   return {
     title: rule.ruleName,
     description: rule.summary,
@@ -112,6 +122,6 @@ export function designerRulePresentation(rule: RuleResult, nodes: Record<string,
   };
 }
 
-export function evaluationIssueTargets(rules: RuleResult[], nodes: Record<string, NodeData>): EvaluationIssueTarget[] {
-  return rules.flatMap((rule) => designerRulePresentation(rule, nodes).targets.map((target, targetIndex) => ({ ...target, ruleId: rule.ruleId, targetIndex })));
+export function evaluationIssueTargets(rules: RuleResult[], nodes: Record<string, NodeData>, roomAnalysis?: RoomRegionAnalysis | null): EvaluationIssueTarget[] {
+  return rules.flatMap((rule) => designerRulePresentation(rule, nodes, roomAnalysis).targets.map((target, targetIndex) => ({ ...target, ruleId: rule.ruleId, targetIndex })));
 }
