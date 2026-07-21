@@ -56,7 +56,7 @@ export type EvaluationReport = {
   reportVersion: "1.0";
   handoffSchemaVersion: string;
   generatedAt: string;
-  scope: "G1-foundation";
+  scope: "G1-foundation" | "G1-G3-foundation";
   overallStatus: RuleStatus;
   counts: Record<RuleStatus, number>;
   tolerances: GeometryTolerances;
@@ -76,6 +76,9 @@ export type GeometryTolerances = {
   zoneRoomMatchMinimumRatio: number;
   zoneCrossRoomMinimumRatio: number;
   zoneOverlapMaximumRatio: number;
+  doorPortalSampleClearanceMeters: number;
+  doorPortalEndClearanceMeters: number;
 };
 
 export type G1Rule = (handoff: EvaluationHandoff) => RuleResult;
+export type G3Rule = (handoff: EvaluationHandoff) => RuleResult;

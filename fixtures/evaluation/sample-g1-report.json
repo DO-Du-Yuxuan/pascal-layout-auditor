@@ -21,7 +21,9 @@
     "roomWallGapMeters": 0.02,
     "zoneRoomMatchMinimumRatio": 0.5,
     "zoneCrossRoomMinimumRatio": 0.2,
-    "zoneOverlapMaximumRatio": 0.05
+    "zoneOverlapMaximumRatio": 0.05,
+    "doorPortalSampleClearanceMeters": 0.05,
+    "doorPortalEndClearanceMeters": 0.02
   },
   "rules": [
     {
@@ -478,11 +480,7 @@
           "value": 0
         },
         {
-          "name": "tinyFragmentCount",
-          "value": 0
-        },
-        {
-          "name": "slenderFragmentCount",
+          "name": "unconfirmedFragmentCount",
           "value": 0
         }
       ],
@@ -500,6 +498,11 @@
         {
           "name": "minimumRoomCompactness",
           "value": 0.03
+        },
+        {
+          "name": "wallEndpointProximity",
+          "value": 0.02,
+          "unit": "m"
         }
       ],
       "missingData": [],
@@ -507,8 +510,8 @@
         "level": "low",
         "score": 0.4,
         "reasons": [
-          "低于几何残留阈值的碎片只保留技术诊断，不作为设计师级别问题",
-          "有效碎片只作为几何异常，不自动当作主要房间"
+          "低于 0.001 m² 且形状极小的区域判为评价器计算残差",
+          "来源未确认的碎片不会被直接认定为设计错误"
         ]
       },
       "diagnostics": []

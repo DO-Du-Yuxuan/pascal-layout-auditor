@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import bellevueProject from "../../sample-data/9618b316-3eab-4fcf-9a21-0f7316479968.json";
 import bellevueDemoProject from "../../sample-data/Bellevue demo.json";
-import { evaluateG1Foundation } from "../evaluation/evaluate";
+import { evaluateFoundation, evaluateG1Foundation } from "../evaluation/evaluate";
 import { buildRoomRegionAnalysis } from "../evaluation/room-regions";
 import { buildEvaluationHandoff } from "../parser/evaluation-handoff";
 import { parseProject } from "../parser/parse";
 import { evaluationHighlightFor, evaluationHighlightRole, resolveEvaluationFocus } from "./focus";
-import { designerRulePresentation, evaluationIssueTargets } from "./presentation";
+import { designerRulePresentation, evaluationIssueTargets, orderEvaluationRulesForDisplay } from "./presentation";
 
 describe("Bellevue evaluation UI adapter", () => {
   const parsed = parseProject(bellevueProject), report = evaluateG1Foundation(buildEvaluationHandoff(parsed)), nodes = parsed.nodes;
@@ -54,13 +54,13 @@ describe("Bellevue evaluation UI adapter", () => {
   });
 
   it("offers an out-of-envelope furniture object as a canvas target", () => {
-    const object = parsed.nodes.item_010u26nmiwafik24!, synthetic = { ...rule("G1-004"), ruleId: "G1-023", ruleName: "家具与设备位于有效建筑范围", normalizedObjectIds: [object.id], pascalSourceIds: [object.id], status: "issue" as const };
+    const object = parsed.nodes.item_010u26nmiwafik24!, synthetic = { ...rule("G1-004"), ruleId: "G1-023", ruleName: "家具与设备位于有效建筑范围", normalizedObjectIds: [object.id], pascalSourceIds: [object.id], status: "issue" as const, diagnostics: [{ severity: "error" as const, code: "item_outside_building_envelope", message: "越界", normalizedObjectIds: [object.id] }] };
     expect(designerRulePresentation(synthetic, nodes).targets[0]).toMatchObject({ primaryId: object.id, levelName: "Level 2" });
   });
 });
 
 describe("Bellevue Room Region UI adapter", () => {
-  const parsed = parseProject(bellevueDemoProject), handoff = buildEvaluationHandoff(parsed), analysis = buildRoomRegionAnalysis(handoff), report = evaluateG1Foundation(handoff), nodes = parsed.nodes;
+  const parsed = parseProject(bellevueDemoProject), handoff = buildEvaluationHandoff(parsed), analysis = buildRoomRegionAnalysis(handoff), report = evaluateFoundation(handoff), nodes = parsed.nodes;
   const rule = (id: string) => report.rules.find((item) => item.ruleId === id)!;
 
   it("turns overlapping Zones into canvas targets and keeps numerical slivers out of problem targets", () => {
@@ -76,5 +76,22 @@ describe("Bellevue Room Region UI adapter", () => {
     expect(targets.filter((target) => target.ruleId === "G1-009")).toHaveLength(2);
     expect(targets.filter((target) => target.ruleId === "G1-012")).toHaveLength(0);
     expect(targets.some((target) => target.ruleId === "G1-019")).toBe(false);
+    expect(targets.some((target) => target.ruleId === "G3-001" || target.ruleId === "G3-005")).toBe(false);
+  });
+
+  it("focuses a synthetic G3 room issue through the shared Room Region adapter", () => {
+    const room = analysis.rooms.find((item) => item.usableForEvaluation)!;
+    const synthetic = { ...rule("G1-004"), ruleId: "G3-005", ruleName: "已定义的使用空间不能成为无入口封闭空间", normalizedObjectIds: [room.roomRegionId], status: "issue" as const };
+    const target = designerRulePresentation(synthetic, nodes, analysis).targets[0]!;
+    expect(target).toMatchObject({ primaryId: room.roomRegionId, levelId: room.levelId });
+    expect(resolveEvaluationFocus(nodes, target.primaryId, analysis)).toMatchObject({ renderable: true, levelId: room.levelId });
+  });
+
+  it("shows issues first and only highlights confirmed G1-023 outside objects", () => {
+    const ordered = orderEvaluationRulesForDisplay(report.rules);
+    expect(ordered.slice(0, ordered.filter((item) => item.status === "issue").length).every((item) => item.status === "issue")).toBe(true);
+    const furniture = designerRulePresentation(rule("G1-023"), nodes, analysis);
+    expect(furniture.targets).toHaveLength(6);
+    expect(furniture.targets.every((target) => resolveEvaluationFocus(nodes, target.primaryId, analysis).renderable)).toBe(true);
   });
 });

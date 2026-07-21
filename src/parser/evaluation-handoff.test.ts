@@ -16,6 +16,7 @@ describe("evaluation handoff projection", () => {
     expect(handoff.furniture.length).toBeGreaterThan(0);
     expect(handoff.equipment.length).toBeGreaterThan(0);
     expect(handoff.stairs.length).toBeGreaterThan(0);
+    expect(handoff.stairs[0].footprint).toEqual(expect.any(Array));
     expect(handoff.walls[0].rawPascalId).toBe(handoff.walls[0].id);
     expect(handoff.walls[0].footprintValidation).toEqual(expect.objectContaining({ valid: expect.any(Boolean), codes: expect.any(Array), areaSquareMeters: expect.any(Number), footprint: expect.any(Array) }));
     expect(handoff.relationships.hostedOpenings.length).toBeGreaterThan(0);

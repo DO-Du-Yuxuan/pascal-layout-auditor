@@ -30,11 +30,12 @@ import { buildManualMeasurementGeometry, buildMeasurementSnapSegments, formatAre
 import { ALPHA_THRESHOLD, computeCropPlacement, floorplanImageCropDiagnostics, FloorplanImageCropCacheEntry, loadFloorplanImageCrop, peekFloorplanImageCrop, subscribeFloorplanImageCrop } from "./geometry/floorplan-image-crop";
 import { auditSceneCoverage } from "./coverage/auditSceneCoverage";
 import { buildEvaluationHandoff } from "./parser/evaluation-handoff";
-import { evaluateG1Foundation, EvaluationReport, RuleStatus } from "./evaluation/evaluate";
-import { designerRulePresentation, evaluationIssueTargets, EvaluationFocusTarget } from "./evaluation-ui/presentation";
+import { evaluateFoundation, EvaluationReport, RuleStatus } from "./evaluation/evaluate";
+import { designerRulePresentation, evaluationIssueTargets, EvaluationFocusTarget, orderEvaluationRulesForDisplay } from "./evaluation-ui/presentation";
 import { evaluationHighlightFor, evaluationHighlightRole, EvaluationHighlight, resolveEvaluationFocus } from "./evaluation-ui/focus";
 import { buildBuildingEnvelopes, BuildingEnvelope } from "./evaluation/envelope";
 import { buildRoomRegionAnalysis, RoomRegionAnalysis } from "./evaluation/room-regions";
+import { buildRoomConnectivityGraph, reachableNodeIds, RoomConnectivityGraph } from "./evaluation/connectivity";
 
 type Visibility = {
   images: boolean;
@@ -93,6 +94,8 @@ function App() {
     [showBuildingEnvelope, setShowBuildingEnvelope] = useState(false),
     [roomRegionAnalysis, setRoomRegionAnalysis] = useState<RoomRegionAnalysis | null>(null),
     [showRoomRegions, setShowRoomRegions] = useState(false),
+    [connectivityGraph, setConnectivityGraph] = useState<RoomConnectivityGraph | null>(null),
+    [showConnectivity, setShowConnectivity] = useState(false),
     [evaluationError, setEvaluationError] = useState<string | null>(null),
     [evaluationHighlights, setEvaluationHighlights] = useState<EvaluationHighlight[]>([]),
     [activeEvaluationHighlight, setActiveEvaluationHighlight] = useState<EvaluationHighlight | null>(null),
@@ -118,6 +121,8 @@ function App() {
       setShowBuildingEnvelope(false);
       setRoomRegionAnalysis(null);
       setShowRoomRegions(false);
+      setConnectivityGraph(null);
+      setShowConnectivity(false);
       setEvaluationError(null);
       setEvaluationHighlights([]);
       setActiveEvaluationHighlight(null);
@@ -201,10 +206,11 @@ function App() {
   const runFoundationEvaluation = () => {
     if (!data) return;
     try {
-      const handoff = buildEvaluationHandoff(data), analysis = buildRoomRegionAnalysis(handoff), report = evaluateG1Foundation(handoff);
+      const handoff = buildEvaluationHandoff(data), analysis = buildRoomRegionAnalysis(handoff), graph = buildRoomConnectivityGraph(handoff, analysis), report = evaluateFoundation(handoff);
       setEvaluationReport(report);
       setBuildingEnvelopes(buildBuildingEnvelopes(handoff));
       setRoomRegionAnalysis(analysis);
+      setConnectivityGraph(graph);
       setEvaluationHighlights(evaluationIssueTargets(report.rules, nodes, analysis).map((target) => evaluationHighlightFor(target.ruleId, target, target.targetIndex)));
       setActiveEvaluationHighlight(null);
       setEvaluationError(null);
@@ -302,6 +308,7 @@ function App() {
               ))}
               <label><input type="checkbox" checked={showBuildingEnvelope} onChange={() => setShowBuildingEnvelope((shown) => !shown)} />显示建筑边界</label>
               <label><input type="checkbox" checked={showRoomRegions} onChange={() => setShowRoomRegions((shown) => !shown)} />显示识别空间</label>
+              <label><input type="checkbox" checked={showConnectivity} disabled={!connectivityGraph} onChange={() => setShowConnectivity((shown) => !shown)} />显示空间连接</label>
             </div>
           </section>
           <Inspector
@@ -345,6 +352,8 @@ function App() {
                 showBuildingEnvelope={showBuildingEnvelope}
                 roomAnalysis={roomRegionAnalysis}
                 showRoomRegions={showRoomRegions}
+                connectivityGraph={connectivityGraph}
+                showConnectivity={showConnectivity}
                 measurementMode={measurementMode}
                 measurementUnit={measurementUnit}
                 manualMeasurements={manualMeasurements.filter((item) => item.levelId === (canvas.levelId || levels[0]?.id || ""))}
@@ -379,6 +388,8 @@ function CanvasPanel({
   showBuildingEnvelope,
   roomAnalysis,
   showRoomRegions,
+  connectivityGraph,
+  showConnectivity,
   onSelect,
   onClearEvaluationHighlight,
   onActivateEvaluationHighlight,
@@ -405,6 +416,8 @@ function CanvasPanel({
   showBuildingEnvelope: boolean;
   roomAnalysis: RoomRegionAnalysis | null;
   showRoomRegions: boolean;
+  connectivityGraph: RoomConnectivityGraph | null;
+  showConnectivity: boolean;
   onSelect: (id: string | null) => void;
   onClearEvaluationHighlight: () => void;
   onActivateEvaluationHighlight: (highlight: EvaluationHighlight) => void;
@@ -491,6 +504,8 @@ function CanvasPanel({
         showBuildingEnvelope={showBuildingEnvelope}
         roomAnalysis={roomAnalysis}
         showRoomRegions={showRoomRegions}
+        connectivityGraph={connectivityGraph}
+        showConnectivity={showConnectivity}
         onSelect={onSelect}
         onClearEvaluationHighlight={onClearEvaluationHighlight}
         onActivateEvaluationHighlight={onActivateEvaluationHighlight}
@@ -570,6 +585,8 @@ function Plan({
   showBuildingEnvelope,
   roomAnalysis,
   showRoomRegions,
+  connectivityGraph,
+  showConnectivity,
   onSelect,
   onClearEvaluationHighlight,
   onActivateEvaluationHighlight,
@@ -595,6 +612,8 @@ function Plan({
   showBuildingEnvelope: boolean;
   roomAnalysis: RoomRegionAnalysis | null;
   showRoomRegions: boolean;
+  connectivityGraph: RoomConnectivityGraph | null;
+  showConnectivity: boolean;
   onSelect: (id: string | null) => void;
   onClearEvaluationHighlight: () => void;
   onActivateEvaluationHighlight: (highlight: EvaluationHighlight) => void;
@@ -794,13 +813,15 @@ function Plan({
           </g>
           {highlightsOnLevel.length > 0 && <EvaluationHighlightOverlay highlights={highlightsOnLevel} activeHighlight={activeEvaluationHighlight} nodes={nodes} exactWalls={exactWalls} onActivate={onActivateEvaluationHighlight} />}
           {showBuildingEnvelope && buildingEnvelope?.usableForEvaluation && <BuildingEnvelopeOverlay envelope={buildingEnvelope} />}
-          {roomAnalysis && (showRoomRegions || highlightsOnLevel.some((highlight) => highlight.ruleId === "G1-012")) && <RoomRegionOverlay analysis={roomAnalysis} nodes={nodes} levelId={levelId} showAll={showRoomRegions} highlights={highlightsOnLevel} onActivate={onActivateEvaluationHighlight} />}
+          {roomAnalysis && (showRoomRegions || highlightsOnLevel.some((highlight) => roomAnalysis.rooms.some((room) => room.roomRegionId === highlight.primaryId))) && <RoomRegionOverlay analysis={roomAnalysis} nodes={nodes} levelId={levelId} showAll={showRoomRegions} highlights={highlightsOnLevel} onActivate={onActivateEvaluationHighlight} />}
+          {showConnectivity && connectivityGraph && <ConnectivityOverlay graph={connectivityGraph} nodes={nodes} levelId={levelId} />}
         </g>
       </svg>
       {measurementMode !== "off" && <div className="measure-hint">{measurementStart ? `${orthogonalLock ? activeMeasurementMode === "horizontal" ? "水平正交已开启" : "垂直正交已开启" : "自由对齐"} · 点击第二点 · Shift 切换正交 · Esc 退出` : `${orthogonalLock ? "正交已开启" : "正交已关闭"} · 点击第一点 · Shift 切换正交 · Esc 退出`}</div>}
       <Compass rotation={rotation} />
       {highlightsOnLevel.length > 0 && <div className="evaluation-highlight-legend"><span><i className="primary" />问题对象（点击红框查看说明）</span><span><i className="related" />关联对象</span><span><i className="muted" />其他对象</span><button onClick={onClearEvaluationHighlight}>关闭高亮</button></div>}
       {showRoomRegions && <div className="room-region-legend"><span><i className="room" />Room Region（物理空间）</span><span><i className="zone" />Zone（功能区域）</span><span><i className="warning" />未匹配/部分匹配</span></div>}
+      {showConnectivity && connectivityGraph && <div className="connectivity-legend"><span><i className="reachable" />可达节点</span><span><i className="unreachable" />不可达/无入口</span><span><i className="portal" />有效门连接</span><span><i className="unresolved" />未解析门或楼梯</span></div>}
       <div className="legend">{formatPanelLength(viewBox.width, measurementUnit)} × {formatPanelLength(viewBox.height, measurementUnit)}</div>
     </div>
   );
@@ -813,6 +834,23 @@ function RoomRegionOverlay({ analysis, nodes, levelId, showAll, highlights, onAc
   return <g className="room-region-overlay">
     {rooms.map((room, index) => { const highlight = highlights.find((item) => item.primaryId === room.roomRegionId), warning = !room.usableForEvaluation || analysis.unmatchedRoomRegionIds.includes(room.roomRegionId), outer = room.polygons[0]?.[0] ?? [], center = outer.length ? { x: outer.reduce((sum, point) => sum + point[0], 0) / outer.length, z: outer.reduce((sum, point) => sum + point[1], 0) / outer.length } : null; if (!showAll && !highlight) return null; return <g key={room.roomRegionId} data-room-region={room.roomRegionId} className={highlight ? "problem-room" : warning ? "warning-room" : "matched-room"} onClick={highlight ? (event) => { event.stopPropagation(); onActivate(highlight); } : undefined}>{room.polygons.flatMap((polygon, polygonIndex) => polygon.map((ring, ringIndex) => <polygon key={`${polygonIndex}-${ringIndex}`} points={ring.map(([x, z]) => `${x},${z}`).join(" ")} fill={ringIndex ? "#f7f8f5" : highlight ? "#e23d35" : warning ? "#d8a449" : "#4f8f72"} fillOpacity={ringIndex ? 1 : .14} stroke={highlight ? "#e23d35" : warning ? "#d8a449" : "#4f8f72"} strokeWidth={highlight ? "3" : "1.5"} vectorEffect="non-scaling-stroke" />))}{showAll && center && <text x={center.x} y={center.z} className="room-region-label" textAnchor="middle" dominantBaseline="middle">R{index + 1} · {room.areaSquareMeters.toFixed(1)} m²</text>}</g>; })}
     {showAll && Object.values(nodes).filter((node) => node.type === "zone" && resolveAncestorLevelId(node.id, nodes).levelId === levelId).map((zone) => { const points = zonePoints(zone), match = matches.get(zone.id), warning = match?.relationship === "unmatched-zone" || match?.relationship === "zone-crosses-rooms" || match?.relationship === "partial"; return points.length >= 3 ? <polygon key={zone.id} data-zone-match={match?.relationship ?? "unmatched-zone"} points={points.map((point) => `${point.x},${point.z}`).join(" ")} fill="none" stroke={warning ? "#d86756" : "#3569a8"} strokeDasharray="6 4" strokeWidth="2" vectorEffect="non-scaling-stroke" /> : null; })}
+  </g>;
+}
+function ConnectivityOverlay({ graph, nodes, levelId }: { graph: RoomConnectivityGraph; nodes: Record<string, NodeData>; levelId: string }) {
+  const centerOfRoom = (roomId: string) => { const room = graph.roomAnalysis.rooms.find((item) => item.roomRegionId === roomId), ring = room?.polygons[0]?.[0] ?? []; return ring.length ? { x: ring.reduce((sum, point) => sum + point[0], 0) / ring.length, z: ring.reduce((sum, point) => sum + point[1], 0) / ring.length } : null; };
+  const average = (points: Array<[number, number]>) => points.length ? { x: points.reduce((sum, point) => sum + point[0], 0) / points.length, z: points.reduce((sum, point) => sum + point[1], 0) / points.length } : null;
+  const degree = new Map<string, number>(); graph.edges.forEach((edge) => { degree.set(edge.fromNodeId, (degree.get(edge.fromNodeId) ?? 0) + 1); degree.set(edge.toNodeId, (degree.get(edge.toNodeId) ?? 0) + 1); });
+  const exteriorStartRooms = graph.portals.filter((portal) => portal.usableForConnectivity && portal.connectsExterior).flatMap((portal) => {
+    const roomRegionId = portal.roomRegionAId ?? portal.roomRegionBId;
+    return roomRegionId ? [roomRegionId] : [];
+  });
+  const reached = new Set(exteriorStartRooms.flatMap((roomRegionId) => [...reachableNodeIds(graph, roomRegionId)]));
+  const rooms = graph.roomAnalysis.rooms.filter((room) => room.levelId === levelId && room.usableForEvaluation), portals = graph.portals.filter((portal) => portal.levelId === levelId), stairs = graph.stairConnections.filter((connection) => connection.fromLevelId === levelId || connection.toLevelId === levelId);
+  return <g className="connectivity-overlay" pointerEvents="none">
+    {rooms.filter((room) => !(degree.get(room.roomRegionId) ?? 0)).flatMap((room) => room.polygons.flatMap((polygon, polygonIndex) => polygon.slice(0, 1).map((ring) => <polygon key={`${room.roomRegionId}-${polygonIndex}`} points={ring.map(([x, z]) => `${x},${z}`).join(" ")} fill="#e23d35" fillOpacity=".08" stroke="#e23d35" strokeDasharray="5 4" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />)))}
+    {portals.map((portal) => { const a = average(portal.samplePointsA), b = average(portal.samplePointsB), center = portal.openingCenter; return portal.usableForConnectivity && a && b ? <g key={portal.doorId}><line x1={a.x} y1={a.z} x2={b.x} y2={b.z} stroke={portal.connectsExterior ? "#ed8b2c" : "#2c8c63"} strokeWidth="3" vectorEffect="non-scaling-stroke"/><circle cx={center?.[0]} cy={center?.[1]} r=".09" fill="#fff" stroke="#2c8c63" strokeWidth="2" vectorEffect="non-scaling-stroke"/></g> : center ? <g key={portal.doorId} transform={`translate(${center[0]} ${center[1]})`}><circle r=".16" fill="#fff3dd" stroke="#d86756" strokeWidth="2" vectorEffect="non-scaling-stroke"/><path d="M-.08,-.08 L.08,.08 M.08,-.08 L-.08,.08" stroke="#d86756" strokeWidth="2" vectorEffect="non-scaling-stroke"/></g> : null; })}
+    {rooms.map((room) => { const center = centerOfRoom(room.roomRegionId); if (!center) return null; const isolated = !(degree.get(room.roomRegionId) ?? 0), reachable = reached.has(room.roomRegionId), color = isolated ? "#e23d35" : exteriorStartRooms.length ? reachable ? "#2c8c63" : "#d86756" : "#7b8790"; return <g key={room.roomRegionId} transform={`translate(${center.x} ${center.z})`}><circle r=".14" fill="#fff" stroke={color} strokeWidth="3" vectorEffect="non-scaling-stroke"/><text y="-.22" className="connectivity-node-label" textAnchor="middle">{degree.get(room.roomRegionId) ?? 0}入口</text></g>; })}
+    {stairs.map((connection) => { const node = nodes[connection.stairId], corners = node ? stairCorners(node, nodes) : [], center = corners.length ? { x: corners.reduce((sum, point) => sum + point.x, 0) / corners.length, z: corners.reduce((sum, point) => sum + point.z, 0) / corners.length } : null; return center ? <g key={connection.stairId} transform={`translate(${center.x} ${center.z})`}><circle r=".2" fill={connection.usableForConnectivity ? "#e8f5ee" : "#fff3dd"} stroke={connection.usableForConnectivity ? "#2c8c63" : "#d86756"} strokeWidth="2" vectorEffect="non-scaling-stroke"/><text className="connectivity-stair-label" textAnchor="middle" dominantBaseline="middle">{connection.usableForConnectivity ? "↕" : "!"}</text></g> : null; })}
   </g>;
 }
 function EvaluationHighlightOverlay({ highlights, activeHighlight, nodes, exactWalls, onActivate }: { highlights: EvaluationHighlight[]; activeHighlight: EvaluationHighlight | null; nodes: Record<string, NodeData>; exactWalls: ReturnType<typeof buildExperimentalWalls>; onActivate: (highlight: EvaluationHighlight) => void }) {
@@ -843,6 +881,10 @@ function EvaluationHighlightOverlay({ highlights, activeHighlight, nodes, exactW
     if (node.type === "zone") {
       const points = zonePoints(node);
       if (points.length >= 3) return <polygon key={id} className={active ? "active" : undefined} data-evaluation-highlight={id} data-highlight-role={role} points={points.map((point) => `${point.x},${point.z}`).join(" ")} fill={color} fillOpacity={fillOpacity} stroke={color} strokeWidth="3" vectorEffect="non-scaling-stroke" onClick={activate} />;
+    }
+    if (node.type === "item") {
+      const transform = resolveItemPlanTransform(node.id, nodes), dimensions = finalDimensions(node);
+      if (transform.status === "ok" && dimensions) return <g key={id} className={active ? "active" : undefined} data-evaluation-highlight={id} data-highlight-role={role} transform={`translate(${transform.x} ${transform.z}) rotate(${transform.rotationY * 180 / Math.PI})`} onClick={activate}><rect x={-dimensions.width / 2} y={-dimensions.depth / 2} width={dimensions.width} height={dimensions.depth} fill={color} fillOpacity={fillOpacity} stroke={color} strokeWidth="3" vectorEffect="non-scaling-stroke" /></g>;
     }
     return null;
   })}</g>;
@@ -1262,9 +1304,10 @@ const evaluationStatusLabel: Record<RuleStatus, string> = { pass: "通过", issu
 const evaluationOriginLabel = { source_data: "源数据", parser: "解析", handoff: "交接映射", rule: "评价规则", geometry_tolerance: "几何容差", insufficient_information: "信息不足" };
 const evaluationValue = (value: unknown) => value === null || value === undefined ? "—" : typeof value === "string" ? value : String(value);
 function EvaluationPanel({ report, nodes, roomAnalysis, error, focusMessage, activeHighlight, disabled, onRun, onFocus, onRegisterRule }: { report: EvaluationReport | null; nodes: Record<string, NodeData>; roomAnalysis: RoomRegionAnalysis | null; error: string | null; focusMessage: string | null; activeHighlight: EvaluationHighlight | null; disabled: boolean; onRun: () => void; onFocus: (ruleId: string, target: EvaluationFocusTarget, targetIndex: number) => void; onRegisterRule: (ruleId: string, element: HTMLElement | null) => void }) {
+  const orderedRules = report ? orderEvaluationRulesForDisplay(report.rules) : [];
   return (
     <section className="side-section evaluation-panel">
-      <div className="side-heading"><h2>G1 基础检查</h2><button className="primary" disabled={disabled} onClick={onRun}>运行基础检查</button></div>
+      <div className="side-heading"><h2>G1 / G3 基础检查</h2><button className="primary" disabled={disabled} onClick={onRun}>运行基础检查</button></div>
       {error && <div className="evaluation-error"><b>评价失败</b><span>{error}</span></div>}
       {focusMessage && <div className="evaluation-focus-message">{focusMessage}</div>}
       {!report && !error && <p>解析完成后手动运行；评价不会随画布变化自动重复。</p>}
@@ -1274,7 +1317,7 @@ function EvaluationPanel({ report, nodes, roomAnalysis, error, focusMessage, act
           {(Object.keys(evaluationStatusLabel) as RuleStatus[]).map((status) => <span key={status}>{evaluationStatusLabel[status]} <b>{report.counts[status]}</b></span>)}
         </div>
         <div className="evaluation-rules">
-          {report.rules.map((item) => { const presentation = designerRulePresentation(item, nodes, roomAnalysis), locations = [...new Set(presentation.targets.map((target) => target.levelName))], activeIndex = activeHighlight?.ruleId === item.ruleId ? activeHighlight.targetIndex : 0, targetIndex = Math.min(activeIndex, Math.max(0, presentation.targets.length - 1)), target = presentation.targets[targetIndex], isActive = activeHighlight?.ruleId === item.ruleId; return <article key={item.ruleId} ref={(element) => onRegisterRule(item.ruleId, element)} className={`evaluation-rule status-${item.status}${isActive ? " active-evaluation-rule" : ""}`}>
+          {orderedRules.map((item) => { const presentation = designerRulePresentation(item, nodes, roomAnalysis), locations = [...new Set(presentation.targets.map((target) => target.levelName))], activeIndex = activeHighlight?.ruleId === item.ruleId ? activeHighlight.targetIndex : 0, targetIndex = Math.min(activeIndex, Math.max(0, presentation.targets.length - 1)), target = presentation.targets[targetIndex], isActive = activeHighlight?.ruleId === item.ruleId, activateCard = (event: React.MouseEvent<HTMLElement> | React.KeyboardEvent<HTMLElement>) => { if (!target) return; const element = event.target as Element; if (element.closest("button, details, summary, a, input, select")) return; if ("key" in event && event.key !== "Enter" && event.key !== " ") return; event.preventDefault(); onFocus(item.ruleId, target, targetIndex); }; return <article key={item.ruleId} ref={(element) => onRegisterRule(item.ruleId, element)} className={`evaluation-rule status-${item.status}${isActive ? " active-evaluation-rule" : ""}${target ? " is-focusable" : ""}`} role={target ? "button" : undefined} tabIndex={target ? 0 : undefined} onClick={activateCard} onKeyDown={activateCard}>
             <div className="evaluation-rule-heading"><strong>{presentation.title}</strong><em>{evaluationStatusLabel[item.status]}</em></div>
             <p>{presentation.description}</p>
             <div className="designer-guidance"><span><b>为什么要处理</b>{presentation.rationale}</span><span><b>建议</b>{presentation.recommendation}</span>{presentation.supplemental && <span className="supplemental">{presentation.supplemental}</span>}</div>

@@ -8,6 +8,8 @@
 .evaluation-counts { display: grid; gap: 4px; grid-template-columns: 1fr 1fr; margin: 6px 0; }
 .evaluation-counts span { background: #f2f4f1; border-radius: 3px; display: flex; font-size: 8px; justify-content: space-between; padding: 4px; }
 .evaluation-rule { background: #f5f6f4; border-left: 3px solid #90a198; margin-top: 5px; padding: 4px 5px; }
+.evaluation-rule.is-focusable { cursor: pointer; }
+.evaluation-rule.is-focusable:hover { background: #eef2ed; box-shadow: 0 0 0 1px #cbd5ce; }
 .evaluation-rule.status-pass { border-color: #76a85d; }
 .evaluation-rule.status-issue { border-color: #d86756; }
 .evaluation-rule.status-unable_to_determine { border-color: #d8a449; }
@@ -54,3 +56,11 @@
 .evaluation-highlight-legend i.related { background: #ed8b2c; }
 .evaluation-highlight-legend i.muted { background: #aeb7b1; }
 .evaluation-highlight-legend button { font-size: 8px; padding: 2px 4px; }
+.connectivity-legend { background: #fffffff0; border: 1px solid #d7ded7; border-radius: 4px; bottom: 38px; display: flex; flex-wrap: wrap; font-size: 8px; gap: 7px; left: 52px; max-width: calc(100% - 150px); padding: 4px 5px; position: absolute; z-index: 4; }
+.connectivity-legend span { align-items: center; display: flex; gap: 3px; }
+.connectivity-legend i { border: 2px solid; border-radius: 50%; display: inline-block; height: 7px; width: 7px; }
+.connectivity-legend i.reachable { border-color: #2c8c63; }
+.connectivity-legend i.unreachable { border-color: #e23d35; }
+.connectivity-legend i.portal { border-color: #2c8c63; border-radius: 1px; height: 2px; width: 11px; }
+.connectivity-legend i.unresolved { background: #fff3dd; border-color: #d86756; }
+.connectivity-node-label, .connectivity-stair-label { fill: #37433c; font-size: .2px; font-weight: 700; paint-order: stroke; stroke: #fff; stroke-width: .035px; }

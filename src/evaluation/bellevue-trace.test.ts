@@ -3,8 +3,9 @@ import bellevueProject from "../../sample-data/9618b316-3eab-4fcf-9a21-0f7316479
 import bellevueDemoProject from "../../sample-data/Bellevue demo.json";
 import { buildEvaluationHandoff } from "../parser/evaluation-handoff";
 import { parseProject } from "../parser/parse";
-import { evaluateG1Foundation } from "./evaluate";
+import { evaluateFoundation, evaluateG1Foundation } from "./evaluate";
 import { relateOpeningToHostBoundary } from "./geometry";
+import { buildRoomConnectivityGraph } from "./connectivity";
 
 describe("Bellevue G1 trace", () => {
   it("preserves the two zero-length source walls through parser and handoff", () => {
@@ -62,7 +63,20 @@ describe("Bellevue G1 trace", () => {
     const fragments = report.rules.find((rule) => rule.ruleId === "G1-012")!;
     expect(fragments.measurements).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: "numericalSliverCount", value: 3 }),
-      expect.objectContaining({ name: "tinyFragmentCount", value: 0 }),
+      expect.objectContaining({ name: "unconfirmedFragmentCount", value: 0 }),
     ]));
+  });
+
+  it("keeps Bellevue Door Portal and G3 results stable", () => {
+    const handoff = buildEvaluationHandoff(parseProject(bellevueDemoProject)), graph = buildRoomConnectivityGraph(handoff), report = evaluateFoundation(handoff);
+    expect(graph.portals).toHaveLength(26);
+    expect(graph.portals.filter((portal) => portal.usableForConnectivity)).toHaveLength(26);
+    expect(graph.portals.filter((portal) => portal.connectsExterior)).toHaveLength(4);
+    expect(graph.edges.filter((edge) => edge.connectionType === "door")).toHaveLength(26);
+    expect(graph.entrance).toMatchObject({ selectedDoorId: null, confidence: "low" });
+    expect(graph.entrance.candidateDoorIds).toHaveLength(4);
+    expect(graph.stairConnections[0]).toMatchObject({ usableForConnectivity: false, diagnostics: [expect.objectContaining({ code: "stair_connection_unresolved" })] });
+    expect(report.rules.find((rule) => rule.ruleId === "G3-001")).toMatchObject({ status: "unable_to_determine" });
+    expect(report.rules.find((rule) => rule.ruleId === "G3-005")).toMatchObject({ status: "pass", measurements: expect.arrayContaining([expect.objectContaining({ name: "roomWithoutEntranceCount", value: 0 })]) });
   });
 });

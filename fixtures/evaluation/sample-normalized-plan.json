@@ -34,7 +34,7 @@
   "shelves": [],
   "shafts": [],
   "stairs": [
-    { "id": "stair_dyp7dqxtm1mg9fxb", "rawPascalId": "stair_dyp7dqxtm1mg9fxb", "name": "Staircase 1", "parentId": "level_jwi4ovhyra2ayxa5", "levelId": "level_jwi4ovhyra2ayxa5", "visible": true, "stairType": "spiral", "fromLevelId": "level_fkoejbpxrc8pfko1", "toLevelId": "level_3xsbeo3c6y50zj52", "widthMeters": 1.1, "totalRiseMeters": 3.5, "stepCount": 20, "innerRadiusMeters": 0.4, "sweepAngleRadians": -5.585053606381854 }
+    { "id": "stair_dyp7dqxtm1mg9fxb", "rawPascalId": "stair_dyp7dqxtm1mg9fxb", "name": "Staircase 1", "parentId": "level_jwi4ovhyra2ayxa5", "levelId": "level_jwi4ovhyra2ayxa5", "visible": true, "stairType": "spiral", "fromLevelId": "level_fkoejbpxrc8pfko1", "toLevelId": "level_3xsbeo3c6y50zj52", "widthMeters": 1.1, "totalRiseMeters": 3.5, "stepCount": 20, "innerRadiusMeters": 0.4, "sweepAngleRadians": -5.585053606381854, "footprint": [] }
   ],
   "relationships": {
     "parentChild": [{ "parentId": "wall_yuvcspiakcghzx4g", "childId": "door_8flujo6mj2vg8y4c" }, { "parentId": "wall_nqx2se3a3eksgajk", "childId": "window_0ei5meru0ws6ho6c" }, { "parentId": "level_jwi4ovhyra2ayxa5", "childId": "zone_03shf4yl22n5zgcq" }],

@@ -18,7 +18,7 @@
     "equipment": { "type": "array", "items": { "$ref": "#/$defs/item" } },
     "columns": { "type": "array", "items": { "$ref": "#/$defs/item" } },
     "shafts": { "type": "array", "items": { "$ref": "#/$defs/baseNode" } },
-    "stairs": { "type": "array", "items": { "$ref": "#/$defs/baseNode" } },
+    "stairs": { "type": "array", "items": { "$ref": "#/$defs/stair" } },
     "relationships": { "type": "object", "required": ["parentChild", "levelMembership", "hostedOpenings", "wallConnections"] },
     "diagnostics": { "type": "array" }
   },
@@ -28,6 +28,7 @@
     "spatialRegion": { "allOf": [{ "$ref": "#/$defs/baseNode" }, { "type": "object", "required": ["outline", "areaSquareMeters"], "properties": { "outline": { "type": "array", "items": { "$ref": "#/$defs/point" } }, "areaSquareMeters": { "type": ["number", "null"] } } }] },
     "wall": { "allOf": [{ "$ref": "#/$defs/baseNode" }, { "type": "object", "required": ["start", "end", "thicknessMeters", "curveOffsetMeters", "footprintValidation"], "properties": { "start": { "anyOf": [{ "$ref": "#/$defs/point" }, { "type": "null" }] }, "end": { "anyOf": [{ "$ref": "#/$defs/point" }, { "type": "null" }] }, "thicknessMeters": { "type": "number" }, "curveOffsetMeters": { "type": "number" }, "footprintValidation": { "type": "object", "required": ["valid", "codes", "areaSquareMeters", "footprint"], "properties": { "valid": { "type": "boolean" }, "codes": { "type": "array", "items": { "type": "string" } }, "areaSquareMeters": { "type": "number" }, "footprint": { "type": "array", "items": { "$ref": "#/$defs/point" } } } } } }] },
     "opening": { "allOf": [{ "$ref": "#/$defs/baseNode" }, { "type": "object", "required": ["hostWallId", "rawWallLocalPosition", "widthMeters", "heightMeters"], "properties": { "hostWallId": { "type": ["string", "null"] }, "rawWallLocalPosition": { "type": ["array", "null"] }, "resolvedWorldPosition": { "anyOf": [{ "$ref": "#/$defs/point" }, { "type": "null" }] }, "widthMeters": { "type": ["number", "null"] }, "heightMeters": { "type": ["number", "null"] } } }] },
-    "item": { "allOf": [{ "$ref": "#/$defs/baseNode" }, { "type": "object", "required": ["assetId", "category", "dimensionsMeters", "transformStatus"], "properties": { "assetId": { "type": ["string", "null"] }, "category": { "type": ["string", "null"] }, "dimensionsMeters": { "type": ["array", "null"] }, "transformStatus": { "enum": ["ok", "error"] } } }] }
+    "item": { "allOf": [{ "$ref": "#/$defs/baseNode" }, { "type": "object", "required": ["assetId", "category", "dimensionsMeters", "transformStatus"], "properties": { "assetId": { "type": ["string", "null"] }, "category": { "type": ["string", "null"] }, "dimensionsMeters": { "type": ["array", "null"] }, "transformStatus": { "enum": ["ok", "error"] } } }] },
+    "stair": { "allOf": [{ "$ref": "#/$defs/baseNode" }, { "type": "object", "required": ["fromLevelId", "toLevelId", "footprint"], "properties": { "fromLevelId": { "type": ["string", "null"] }, "toLevelId": { "type": ["string", "null"] }, "footprint": { "type": "array", "items": { "$ref": "#/$defs/point" } } } }] }
   }
 }

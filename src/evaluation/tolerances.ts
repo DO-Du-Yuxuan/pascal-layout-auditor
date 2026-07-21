@@ -13,4 +13,6 @@ export const G1_GEOMETRY_TOLERANCES: GeometryTolerances = Object.freeze({
   zoneRoomMatchMinimumRatio: 0.5,
   zoneCrossRoomMinimumRatio: 0.2,
   zoneOverlapMaximumRatio: 0.05,
+  doorPortalSampleClearanceMeters: 0.05,
+  doorPortalEndClearanceMeters: 0.02,
 });

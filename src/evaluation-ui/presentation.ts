@@ -23,13 +23,16 @@ export type DesignerRulePresentation = {
 
 /** A canvas-facing index of every issue that has a known renderable object. */
 export type EvaluationIssueTarget = EvaluationFocusTarget & { ruleId: string; targetIndex: number };
+const statusPriority: Record<RuleResult["status"], number> = { issue: 0, unable_to_determine: 1, pass: 2, not_applicable: 3 };
+export const orderEvaluationRulesForDisplay = (rules: RuleResult[]) => rules.map((rule, index) => ({ rule, index })).sort((a, b) => statusPriority[a.rule.status] - statusPriority[b.rule.status] || a.index - b.index).map((item) => item.rule);
 
 const measurement = (rule: RuleResult, name: string) => rule.measurements.find((item) => item.name === name)?.value;
 const humanLevelName = (levelId: string | undefined, nodes: Record<string, NodeData>) => levelId ? nodes[levelId]?.name || "未命名楼层" : "楼层未确定";
 
 export function evaluationFocusTargets(rule: RuleResult, nodes: Record<string, NodeData>, roomAnalysis?: RoomRegionAnalysis | null): EvaluationFocusTarget[] {
   if (rule.status !== "issue") return [];
-  const candidates = rule.normalizedObjectIds.map((id) => nodes[id]).filter((node): node is NodeData => Boolean(node));
+  const focusIds = rule.ruleId === "G1-023" ? [...new Set(rule.diagnostics.filter((diagnostic) => diagnostic.code === "item_outside_building_envelope").flatMap((diagnostic) => diagnostic.normalizedObjectIds.slice(0, 1)))] : rule.normalizedObjectIds;
+  const candidates = focusIds.map((id) => nodes[id]).filter((node): node is NodeData => Boolean(node));
   const primary = rule.ruleId === "G1-004" ? candidates.filter((node) => node.type === "wall")
     : rule.ruleId === "G1-005" ? candidates.filter((node) => node.type === "stair")
       : rule.ruleId === "G1-013" ? candidates.filter((node) => node.type === "window" || node.type === "door")
@@ -41,7 +44,7 @@ export function evaluationFocusTargets(rule: RuleResult, nodes: Record<string, N
     const hostId = rule.ruleId === "G1-013" ? node.wallId ?? node.parentId : null;
     return { primaryId: node.id, relatedIds: hostId && nodes[hostId] ? [hostId] : [], label: `${typeLabel} · ${levelName}`, levelId, levelName };
   });
-  const roomTargets = rule.ruleId === "G1-012" ? (roomAnalysis?.rooms ?? []).filter((room) => rule.normalizedObjectIds.includes(room.roomRegionId)).map((room, index) => ({ primaryId: room.roomRegionId, relatedIds: room.boundaryWallIds, label: `异常空间 ${index + 1} · ${humanLevelName(room.levelId, nodes)}`, levelId: room.levelId, levelName: humanLevelName(room.levelId, nodes) })) : [];
+  const roomTargets = ["G1-012", "G3-001", "G3-005"].includes(rule.ruleId) ? (roomAnalysis?.rooms ?? []).filter((room) => rule.normalizedObjectIds.includes(room.roomRegionId)).map((room, index) => ({ primaryId: room.roomRegionId, relatedIds: room.boundaryWallIds, label: `${rule.ruleId === "G3-001" ? "不可达空间" : rule.ruleId === "G3-005" ? "无入口空间" : "异常空间"} ${index + 1} · ${humanLevelName(room.levelId, nodes)}`, levelId: room.levelId, levelName: humanLevelName(room.levelId, nodes) })) : [];
   return [...nodeTargets, ...roomTargets];
 }
 
@@ -113,6 +116,11 @@ export function designerRulePresentation(rule: RuleResult, nodes: Record<string,
   if (rule.ruleId === "G1-007") return { title: rule.status === "pass" ? "需要独立封闭的空间边界完整" : "部分应封闭空间没有形成独立房间", description: rule.summary, rationale: "卧室、卫生间和储藏类空间需要可靠边界，才能支持隐私、功能和后续通行检查。", recommendation: rule.status === "pass" ? "无需处理。" : "检查对应 Zone 周边墙体闭合情况和 Zone 轮廓。", problemCountLabel: rule.status === "issue" ? String(count) : "0", targets };
   if (rule.ruleId === "G1-009") return { title: rule.status === "issue" ? "发现功能区域异常重叠" : "未发现空间异常重叠", description: rule.summary, rationale: "重复或跨房间的功能区域会造成面积统计和空间归属错误。", recommendation: rule.status === "issue" ? "在图中检查红色 Zone 的轮廓是否重复或跨越分隔墙。" : "无需处理。", problemCountLabel: rule.status === "issue" ? String(count) : "0", targets };
   if (rule.ruleId === "G1-012") return { title: rule.status === "issue" ? `发现 ${count} 个异常空间碎片` : "未发现错误空间", description: rule.summary, rationale: "极小或细长区域通常来自墙端缝隙、曲墙离散或边界误差，并非真实房间。", recommendation: rule.status === "issue" ? "逐个定位并检查相邻墙端与 Slab 边界。" : "无需处理。", problemCountLabel: rule.status === "issue" ? String(count) : "0", targets };
+  if (rule.ruleId === "G3-005") return { title: rule.status === "issue" ? `发现 ${count} 个无法进入的房间` : rule.status === "unable_to_determine" ? "部分房间入口暂时无法确认" : "使用空间均有有效入口", description: rule.summary, rationale: "形成完整房间的使用空间需要至少一个有效房门、开放入口或楼梯连接。", recommendation: rule.status === "issue" ? "检查是否遗漏房门、门的宿主关系，或该区域是否属于无需进入的构造空间。" : rule.status === "unable_to_determine" ? "先修复未解析门洞或补充空间用途。" : "无需处理。", problemCountLabel: rule.status === "issue" ? String(count) : rule.status === "unable_to_determine" ? "未确定" : "0", targets };
+  if (rule.ruleId === "G3-001") {
+    const entranceCandidates = Number(measurement(rule, "entranceCandidateCount") ?? 0), unresolvedStairs = Number(measurement(rule, "unresolvedStairCount") ?? 0), connectedLevels = rule.measurements.filter((item) => item.name === "levelSameFloorConnected" && item.value === true).length;
+    return { title: rule.status === "issue" ? `发现 ${count} 个外门不可达的主要空间` : rule.status === "unable_to_determine" ? "跨层空间可达性尚未确认" : "主要空间均可从至少一个外门到达", description: rule.status === "unable_to_determine" ? `当前识别到 ${entranceCandidates} 个可靠外门，且有 ${connectedLevels} 个楼层的同层门网已经连通${unresolvedStairs ? `；但有 ${unresolvedStairs} 座楼梯的楼层连接无效` : ""}，因此跨层部分暂时无法作结论。` : rule.summary, rationale: "只要存在任意一扇可靠外门能通达全部主要空间，即满足本项。当前只检查拓扑连通，不检查家具、净宽或门扇碰撞。", recommendation: rule.status === "issue" ? "逐个定位不可达空间，检查沿途房门、开放连接和楼梯设置。" : rule.status === "unable_to_determine" ? "修复楼梯上下层引用并确认两层落地区域后重新评价。" : "无需处理。", supplemental: rule.status === "unable_to_determine" ? "“无法判断”不代表已经发现不可达空间；Bellevue 两个楼层的同层房间目前均已连通。" : undefined, problemCountLabel: rule.status === "issue" ? String(count) : rule.status === "unable_to_determine" ? "未确定" : "0", targets };
+  }
   return {
     title: rule.ruleName,
     description: rule.summary,
