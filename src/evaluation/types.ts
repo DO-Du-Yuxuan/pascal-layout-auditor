@@ -78,6 +78,11 @@ export type GeometryTolerances = {
   zoneOverlapMaximumRatio: number;
   doorPortalSampleClearanceMeters: number;
   doorPortalEndClearanceMeters: number;
+  doorEntryDepthMeters: number;
+  doorEntryMinimumClearRatio: number;
+  doorOperationMinimumAngleRadians: number;
+  doorCollisionAreaSquareMeters: number;
+  doorLeafThicknessMeters: number;
 };
 
 export type G1Rule = (handoff: EvaluationHandoff) => RuleResult;

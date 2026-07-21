@@ -94,4 +94,18 @@ describe("Bellevue Room Region UI adapter", () => {
     expect(furniture.targets).toHaveLength(6);
     expect(furniture.targets.every((target) => resolveEvaluationFocus(nodes, target.primaryId, analysis).renderable)).toBe(true);
   });
+
+  it("counts one problem door once when it collides with several objects", () => {
+    const doorId = "door_p2yxrdash2rgc49t", relatedIds = ["wall_n8p4o7n2gxnaqwde", "item_ousmkp19jbxsvuhz", "item_tbac0ek6qdmwo1ug"], template = rule("G3-007");
+    const synthetic = { ...template, status: "issue" as const, normalizedObjectIds: [doorId, ...relatedIds], diagnostics: relatedIds.map((id) => ({ severity: "error" as const, code: "door_swing_blocked", message: "碰撞", normalizedObjectIds: [doorId, id] })) };
+    const presentation = designerRulePresentation(synthetic, nodes, analysis);
+    expect(presentation.problemCountLabel).toBe("1");
+    expect(presentation.targets).toEqual([expect.objectContaining({ primaryId: doorId, relatedIds })]);
+  });
+
+  it("explains unresolved double doors without creating false red highlights", () => {
+    const presentation = designerRulePresentation(rule("G3-007"), nodes, analysis);
+    expect(presentation.title).toContain("开启关系暂时无法核验");
+    expect(presentation.targets).toEqual([]);
+  });
 });

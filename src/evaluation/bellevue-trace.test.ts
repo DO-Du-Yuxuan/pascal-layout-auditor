@@ -6,6 +6,7 @@ import { parseProject } from "../parser/parse";
 import { evaluateFoundation, evaluateG1Foundation } from "./evaluate";
 import { relateOpeningToHostBoundary } from "./geometry";
 import { buildRoomConnectivityGraph } from "./connectivity";
+import { evaluationFocusTargets } from "../evaluation-ui/presentation";
 
 describe("Bellevue G1 trace", () => {
   it("preserves the two zero-length source walls through parser and handoff", () => {
@@ -78,5 +79,18 @@ describe("Bellevue G1 trace", () => {
     expect(graph.stairConnections[0]).toMatchObject({ usableForConnectivity: false, diagnostics: [expect.objectContaining({ code: "stair_connection_unresolved" })] });
     expect(report.rules.find((rule) => rule.ruleId === "G3-001")).toMatchObject({ status: "unable_to_determine" });
     expect(report.rules.find((rule) => rule.ruleId === "G3-005")).toMatchObject({ status: "pass", measurements: expect.arrayContaining([expect.objectContaining({ name: "roomWithoutEntranceCount", value: 0 })]) });
+    expect(report.rules.find((rule) => rule.ruleId === "G3-002")).toBeDefined();
+    expect(report.rules.find((rule) => rule.ruleId === "G3-007")).toBeDefined();
+    expect(report.rules.find((rule) => rule.ruleId === "G3-008")).toBeDefined();
+    const openingRule = report.rules.find((rule) => rule.ruleId === "G3-007")!;
+    const targets = evaluationFocusTargets(openingRule, parseProject(bellevueDemoProject).nodes);
+    expect(targets.map((target) => target.primaryId)).toEqual([...new Set(openingRule.diagnostics.filter((diagnostic) => diagnostic.code === "door_swing_blocked").map((diagnostic) => diagnostic.normalizedObjectIds[0]!))]);
+    expect(targets).toHaveLength(0);
+    expect(openingRule).toMatchObject({ status: "unable_to_determine", summary: "2 扇门缺少可靠的门扇操作关系" });
+    expect(openingRule.measurements).toEqual(expect.arrayContaining([expect.objectContaining({ name: "blockedDoorCount", value: 0 }), expect.objectContaining({ name: "collisionObjectCount", value: 0 }), expect.objectContaining({ name: "usableSwingDoorCount", value: 17 }), expect.objectContaining({ name: "unresolvedSwingDoorCount", value: 2 })]));
+    expect(openingRule.diagnostics.filter((diagnostic) => diagnostic.code === "double_door_leaf_relation_unavailable")).toHaveLength(2);
+    expect(report.rules.find((rule) => rule.ruleId === "G3-002")).toMatchObject({ status: "pass", summary: "26 扇门的入口检测区域均保留基本可进入范围" });
+    expect(report.rules.find((rule) => rule.ruleId === "G3-008")).toMatchObject({ status: "unable_to_determine" });
+    expect(report.rules.find((rule) => rule.ruleId === "G3-008")?.measurements).toEqual(expect.arrayContaining([expect.objectContaining({ name: "severeInterlockCount", value: 0 }), expect.objectContaining({ name: "sequentialUseOverlapCount", value: 0 }), expect.objectContaining({ name: "unresolvedDoorOperationCount", value: 2 })]));
   });
 });

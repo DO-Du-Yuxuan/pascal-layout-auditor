@@ -15,6 +15,8 @@ describe("evaluation handoff projection", () => {
     expect(handoff.windows.length).toBeGreaterThan(0);
     expect(handoff.furniture.length).toBeGreaterThan(0);
     expect(handoff.equipment.length).toBeGreaterThan(0);
+    expect(handoff.shelves.length).toBeGreaterThan(0);
+    expect(handoff.shelves.every((shelf) => Array.isArray(shelf.footprint))).toBe(true);
     expect(handoff.stairs.length).toBeGreaterThan(0);
     expect(handoff.stairs[0].footprint).toEqual(expect.any(Array));
     expect(handoff.walls[0].rawPascalId).toBe(handoff.walls[0].id);

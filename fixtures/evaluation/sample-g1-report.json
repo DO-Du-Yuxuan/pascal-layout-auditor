@@ -23,7 +23,12 @@
     "zoneCrossRoomMinimumRatio": 0.2,
     "zoneOverlapMaximumRatio": 0.05,
     "doorPortalSampleClearanceMeters": 0.05,
-    "doorPortalEndClearanceMeters": 0.02
+    "doorPortalEndClearanceMeters": 0.02,
+    "doorEntryDepthMeters": 0.45,
+    "doorEntryMinimumClearRatio": 0.2,
+    "doorOperationMinimumAngleRadians": 1.0471975511965976,
+    "doorCollisionAreaSquareMeters": 0.01,
+    "doorLeafThicknessMeters": 0.04
   },
   "rules": [
     {

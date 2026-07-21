@@ -15,4 +15,9 @@ export const G1_GEOMETRY_TOLERANCES: GeometryTolerances = Object.freeze({
   zoneOverlapMaximumRatio: 0.05,
   doorPortalSampleClearanceMeters: 0.05,
   doorPortalEndClearanceMeters: 0.02,
+  doorEntryDepthMeters: 0.45,
+  doorEntryMinimumClearRatio: 0.2,
+  doorOperationMinimumAngleRadians: Math.PI / 3,
+  doorCollisionAreaSquareMeters: 0.01,
+  doorLeafThicknessMeters: 0.04,
 });

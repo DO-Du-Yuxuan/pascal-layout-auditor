@@ -63,4 +63,9 @@
 .connectivity-legend i.unreachable { border-color: #e23d35; }
 .connectivity-legend i.portal { border-color: #2c8c63; border-radius: 1px; height: 2px; width: 11px; }
 .connectivity-legend i.unresolved { background: #fff3dd; border-color: #d86756; }
+.door-operation-legend { position: absolute; right: 12px; bottom: 72px; display: flex; gap: 10px; padding: 7px 10px; border-radius: 8px; background: rgba(255,255,255,.92); box-shadow: 0 2px 10px rgba(0,0,0,.1); font-size: 12px; }
+.door-operation-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.door-operation-legend i { width: 14px; height: 10px; display: inline-block; border: 2px solid; }
+.door-operation-legend i.swing { background: rgba(226,61,53,.2); border-color: #e23d35; }
+.door-operation-legend i.entry { background: rgba(237,139,44,.14); border-color: #ed8b2c; border-style: dashed; }
 .connectivity-node-label, .connectivity-stair-label { fill: #37433c; font-size: .2px; font-weight: 700; paint-order: stroke; stroke: #fff; stroke-width: .035px; }

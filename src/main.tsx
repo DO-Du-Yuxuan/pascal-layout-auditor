@@ -36,6 +36,7 @@ import { evaluationHighlightFor, evaluationHighlightRole, EvaluationHighlight, r
 import { buildBuildingEnvelopes, BuildingEnvelope } from "./evaluation/envelope";
 import { buildRoomRegionAnalysis, RoomRegionAnalysis } from "./evaluation/room-regions";
 import { buildRoomConnectivityGraph, reachableNodeIds, RoomConnectivityGraph } from "./evaluation/connectivity";
+import { buildDoorOperations, type DoorOperation } from "./evaluation/door-operations";
 
 type Visibility = {
   images: boolean;
@@ -96,6 +97,8 @@ function App() {
     [showRoomRegions, setShowRoomRegions] = useState(false),
     [connectivityGraph, setConnectivityGraph] = useState<RoomConnectivityGraph | null>(null),
     [showConnectivity, setShowConnectivity] = useState(false),
+    [doorOperations, setDoorOperations] = useState<DoorOperation[]>([]),
+    [showDoorOperationDebug, setShowDoorOperationDebug] = useState(false),
     [evaluationError, setEvaluationError] = useState<string | null>(null),
     [evaluationHighlights, setEvaluationHighlights] = useState<EvaluationHighlight[]>([]),
     [activeEvaluationHighlight, setActiveEvaluationHighlight] = useState<EvaluationHighlight | null>(null),
@@ -123,6 +126,8 @@ function App() {
       setShowRoomRegions(false);
       setConnectivityGraph(null);
       setShowConnectivity(false);
+      setDoorOperations([]);
+      setShowDoorOperationDebug(false);
       setEvaluationError(null);
       setEvaluationHighlights([]);
       setActiveEvaluationHighlight(null);
@@ -206,11 +211,12 @@ function App() {
   const runFoundationEvaluation = () => {
     if (!data) return;
     try {
-      const handoff = buildEvaluationHandoff(data), analysis = buildRoomRegionAnalysis(handoff), graph = buildRoomConnectivityGraph(handoff, analysis), report = evaluateFoundation(handoff);
+      const handoff = buildEvaluationHandoff(data), analysis = buildRoomRegionAnalysis(handoff), graph = buildRoomConnectivityGraph(handoff, analysis), operations = buildDoorOperations(handoff), report = evaluateFoundation(handoff);
       setEvaluationReport(report);
       setBuildingEnvelopes(buildBuildingEnvelopes(handoff));
       setRoomRegionAnalysis(analysis);
       setConnectivityGraph(graph);
+      setDoorOperations(operations);
       setEvaluationHighlights(evaluationIssueTargets(report.rules, nodes, analysis).map((target) => evaluationHighlightFor(target.ruleId, target, target.targetIndex)));
       setActiveEvaluationHighlight(null);
       setEvaluationError(null);
@@ -309,6 +315,7 @@ function App() {
               <label><input type="checkbox" checked={showBuildingEnvelope} onChange={() => setShowBuildingEnvelope((shown) => !shown)} />显示建筑边界</label>
               <label><input type="checkbox" checked={showRoomRegions} onChange={() => setShowRoomRegions((shown) => !shown)} />显示识别空间</label>
               <label><input type="checkbox" checked={showConnectivity} disabled={!connectivityGraph} onChange={() => setShowConnectivity((shown) => !shown)} />显示空间连接</label>
+              <label><input type="checkbox" checked={showDoorOperationDebug} disabled={!doorOperations.length} onChange={() => setShowDoorOperationDebug((shown) => !shown)} />显示门操作区域</label>
             </div>
           </section>
           <Inspector
@@ -354,6 +361,8 @@ function App() {
                 showRoomRegions={showRoomRegions}
                 connectivityGraph={connectivityGraph}
                 showConnectivity={showConnectivity}
+                doorOperations={doorOperations}
+                showDoorOperationDebug={showDoorOperationDebug}
                 measurementMode={measurementMode}
                 measurementUnit={measurementUnit}
                 manualMeasurements={manualMeasurements.filter((item) => item.levelId === (canvas.levelId || levels[0]?.id || ""))}
@@ -390,6 +399,8 @@ function CanvasPanel({
   showRoomRegions,
   connectivityGraph,
   showConnectivity,
+  doorOperations,
+  showDoorOperationDebug,
   onSelect,
   onClearEvaluationHighlight,
   onActivateEvaluationHighlight,
@@ -418,6 +429,8 @@ function CanvasPanel({
   showRoomRegions: boolean;
   connectivityGraph: RoomConnectivityGraph | null;
   showConnectivity: boolean;
+  doorOperations: DoorOperation[];
+  showDoorOperationDebug: boolean;
   onSelect: (id: string | null) => void;
   onClearEvaluationHighlight: () => void;
   onActivateEvaluationHighlight: (highlight: EvaluationHighlight) => void;
@@ -506,6 +519,8 @@ function CanvasPanel({
         showRoomRegions={showRoomRegions}
         connectivityGraph={connectivityGraph}
         showConnectivity={showConnectivity}
+        doorOperations={doorOperations}
+        showDoorOperationDebug={showDoorOperationDebug}
         onSelect={onSelect}
         onClearEvaluationHighlight={onClearEvaluationHighlight}
         onActivateEvaluationHighlight={onActivateEvaluationHighlight}
@@ -587,6 +602,8 @@ function Plan({
   showRoomRegions,
   connectivityGraph,
   showConnectivity,
+  doorOperations,
+  showDoorOperationDebug,
   onSelect,
   onClearEvaluationHighlight,
   onActivateEvaluationHighlight,
@@ -614,6 +631,8 @@ function Plan({
   showRoomRegions: boolean;
   connectivityGraph: RoomConnectivityGraph | null;
   showConnectivity: boolean;
+  doorOperations: DoorOperation[];
+  showDoorOperationDebug: boolean;
   onSelect: (id: string | null) => void;
   onClearEvaluationHighlight: () => void;
   onActivateEvaluationHighlight: (highlight: EvaluationHighlight) => void;
@@ -812,6 +831,7 @@ function Plan({
           {measurementMode !== "off" && measurementHover && <SnapIndicator snap={measurementHover} active={Boolean(measurementStart)} />}
           </g>
           {highlightsOnLevel.length > 0 && <EvaluationHighlightOverlay highlights={highlightsOnLevel} activeHighlight={activeEvaluationHighlight} nodes={nodes} exactWalls={exactWalls} onActivate={onActivateEvaluationHighlight} />}
+          {(showDoorOperationDebug || activeEvaluationHighlight?.ruleId === "G3-002" || activeEvaluationHighlight?.ruleId === "G3-007" || activeEvaluationHighlight?.ruleId === "G3-008") && <DoorOperationOverlay operations={doorOperations} levelId={levelId} activeHighlight={activeEvaluationHighlight} showDebug={showDoorOperationDebug} />}
           {showBuildingEnvelope && buildingEnvelope?.usableForEvaluation && <BuildingEnvelopeOverlay envelope={buildingEnvelope} />}
           {roomAnalysis && (showRoomRegions || highlightsOnLevel.some((highlight) => roomAnalysis.rooms.some((room) => room.roomRegionId === highlight.primaryId))) && <RoomRegionOverlay analysis={roomAnalysis} nodes={nodes} levelId={levelId} showAll={showRoomRegions} highlights={highlightsOnLevel} onActivate={onActivateEvaluationHighlight} />}
           {showConnectivity && connectivityGraph && <ConnectivityOverlay graph={connectivityGraph} nodes={nodes} levelId={levelId} />}
@@ -822,9 +842,23 @@ function Plan({
       {highlightsOnLevel.length > 0 && <div className="evaluation-highlight-legend"><span><i className="primary" />问题对象（点击红框查看说明）</span><span><i className="related" />关联对象</span><span><i className="muted" />其他对象</span><button onClick={onClearEvaluationHighlight}>关闭高亮</button></div>}
       {showRoomRegions && <div className="room-region-legend"><span><i className="room" />Room Region（物理空间）</span><span><i className="zone" />Zone（功能区域）</span><span><i className="warning" />未匹配/部分匹配</span></div>}
       {showConnectivity && connectivityGraph && <div className="connectivity-legend"><span><i className="reachable" />可达节点</span><span><i className="unreachable" />不可达/无入口</span><span><i className="portal" />有效门连接</span><span><i className="unresolved" />未解析门或楼梯</span></div>}
+      {showDoorOperationDebug && <div className="door-operation-legend"><span><i className="swing" />门扇扫掠</span><span><i className="entry" />入口检测区域</span></div>}
       <div className="legend">{formatPanelLength(viewBox.width, measurementUnit)} × {formatPanelLength(viewBox.height, measurementUnit)}</div>
     </div>
   );
+}
+function DoorOperationOverlay({ operations, levelId, activeHighlight, showDebug }: { operations: DoorOperation[]; levelId: string; activeHighlight: EvaluationHighlight | null; showDebug: boolean }) {
+  const activeDoorIds = new Set(activeHighlight && ["G3-002", "G3-007", "G3-008"].includes(activeHighlight.ruleId) ? [activeHighlight.primaryId, ...activeHighlight.relatedIds] : []);
+  return <g className="door-operation-overlay" pointerEvents="none">
+    {operations.filter((operation) => operation.levelId === levelId && operation.usableForEvaluation && (showDebug || activeDoorIds.has(operation.doorId))).map((operation) => {
+      const active = activeDoorIds.has(operation.doorId);
+      return <g key={operation.doorId} data-door-operation={operation.doorId}>
+        {operation.entryPolygon.length >= 3 && (showDebug || activeHighlight?.ruleId === "G3-002") && <polygon points={operation.entryPolygon.map(([x, z]) => `${x},${z}`).join(" ")} fill="#ed8b2c" fillOpacity={active ? ".18" : ".06"} stroke="#ed8b2c" strokeDasharray="5 3" strokeWidth={active ? "2" : "1"} vectorEffect="non-scaling-stroke" />}
+        {(active ? operation.requiredSwingPolygon : operation.swingPolygon).length >= 3 && (showDebug || activeHighlight?.ruleId === "G3-007" || activeHighlight?.ruleId === "G3-008") && <polygon points={(active ? operation.requiredSwingPolygon : operation.swingPolygon).map(([x, z]) => `${x},${z}`).join(" ")} fill={active ? "#e23d35" : "#7b8790"} fillOpacity={active ? ".22" : ".05"} stroke={active ? "#e23d35" : "#7b8790"} strokeDasharray="5 3" strokeWidth={active ? "2" : "1"} vectorEffect="non-scaling-stroke" />}
+        {operation.hingePoint && <circle cx={operation.hingePoint[0]} cy={operation.hingePoint[1]} r={active ? ".08" : ".05"} fill={active ? "#e23d35" : "#7b8790"} />}
+      </g>;
+    })}
+  </g>;
 }
 function BuildingEnvelopeOverlay({ envelope }: { envelope: BuildingEnvelope }) {
   return <g className="building-envelope-overlay" pointerEvents="none">{envelope.polygons.map((polygon, index) => <g key={index}>{polygon.map((ring, ringIndex) => <polygon key={ringIndex} points={ring.map(([x, z]) => `${x},${z}`).join(" ")} fill={ringIndex === 0 ? "#ed8b2c" : "#f7f8f5"} fillOpacity={ringIndex === 0 ? ".05" : "1"} stroke="#ed8b2c" strokeWidth={ringIndex === 0 ? "2" : "1"} vectorEffect="non-scaling-stroke" />)}</g>)}</g>;
