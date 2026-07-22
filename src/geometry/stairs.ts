@@ -5,6 +5,7 @@ export type PlanPoint = { x: number; z: number };
 type SegmentEntry = { node: NodeData; polygon: PlanPoint[]; treads: Array<{ start: PlanPoint; end: PlanPoint }> };
 export type StraightStairPlanGeometry = { segments: SegmentEntry[]; upDirection: { from: PlanPoint; to: PlanPoint } };
 export type CurvedStairPlanGeometry = { footprintPath: string; treadLines: Array<{ start: PlanPoint; end: PlanPoint }>; upDirection: { from: PlanPoint; to: PlanPoint }; corners: PlanPoint[] };
+export type StairLandingGeometry = { fromCenter: PlanPoint; toCenter: PlanPoint; fromOutward: PlanPoint; toOutward: PlanPoint; width: number };
 
 const finite = (value: unknown) => Number.isFinite(value) ? Number(value) : null;
 const number = (value: unknown, fallback: number) => finite(value) ?? fallback;
@@ -88,6 +89,24 @@ export function stairCorners(stair: NodeData, nodes: Record<string, NodeData>) {
   if (stair.stairType === "spiral") return buildSpiralStairPlanGeometry(stair)?.footprint ?? [];
   if (stair.stairType === "curved") return buildCurvedStairPlanGeometry(stair)?.corners ?? [];
   return buildStraightStairPlanGeometry(stair, nodes)?.segments.flatMap((segment) => segment.polygon) ?? [];
+}
+
+/** Landing centres and outward directions are stable evaluator inputs; Room matching samples outside the stair body instead of intersecting the whole footprint. */
+export function stairLandingGeometry(stair: NodeData, nodes: Record<string, NodeData>): StairLandingGeometry | null {
+  if (stair.stairType === "spiral" || stair.stairType === "curved") {
+    const width = finite(stair.width), innerRadius = finite(stair.innerRadius), sweep = finite(stair.sweepAngle), position = Array.isArray(stair.position) ? stair.position : null;
+    if (!(width && width > 0 && innerRadius !== null && innerRadius > 0 && sweep && position)) return null;
+    const center = { x: number(position[0], 0), z: number(position[2], 0) }, startAngle = -number(stair.rotation, 0) - sweep / 2, endAngle = startAngle + sweep, radius = innerRadius + width / 2, direction = Math.sign(sweep);
+    const at = (angle: number) => ({ x: center.x + Math.cos(angle) * radius, z: center.z + Math.sin(angle) * radius });
+    const travel = (angle: number) => ({ x: -Math.sin(angle) * direction, z: Math.cos(angle) * direction });
+    const fromTravel = travel(startAngle), toTravel = travel(endAngle);
+    return { fromCenter: at(startAngle), toCenter: at(endAngle), fromOutward: { x: -fromTravel.x, z: -fromTravel.z }, toOutward: toTravel, width };
+  }
+  const geometry = buildStraightStairPlanGeometry(stair, nodes), first = geometry?.segments[0]?.polygon, last = geometry?.segments[geometry.segments.length - 1]?.polygon;
+  if (!first || !last) return null;
+  const midpoint = (a: PlanPoint, b: PlanPoint) => ({ x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 }), normalized = (from: PlanPoint, to: PlanPoint) => { const dx = to.x - from.x, dz = to.z - from.z, length = Math.hypot(dx, dz); return length > 0 ? { x: dx / length, z: dz / length } : null; };
+  const fromCenter = midpoint(first[0]!, first[1]!), firstTop = midpoint(first[2]!, first[3]!), lastBottom = midpoint(last[0]!, last[1]!), toCenter = midpoint(last[2]!, last[3]!), fromOutward = normalized(firstTop, fromCenter), toOutward = normalized(lastBottom, toCenter), width = Math.hypot(first[1]!.x - first[0]!.x, first[1]!.z - first[0]!.z);
+  return fromOutward && toOutward ? { fromCenter, toCenter, fromOutward, toOutward, width } : null;
 }
 
 export function hasStairPlanGeometry(stair: NodeData, nodes: Record<string, NodeData>) {

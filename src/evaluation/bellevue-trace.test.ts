@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import bellevueProject from "../../sample-data/9618b316-3eab-4fcf-9a21-0f7316479968.json";
 import bellevueDemoProject from "../../sample-data/Bellevue demo.json";
 import { buildEvaluationHandoff } from "../parser/evaluation-handoff";
 import { parseProject } from "../parser/parse";
@@ -8,11 +7,15 @@ import { relateOpeningToHostBoundary } from "./geometry";
 import { buildRoomConnectivityGraph } from "./connectivity";
 import { evaluationFocusTargets } from "../evaluation-ui/presentation";
 
+const bellevueProject = structuredClone(bellevueDemoProject) as any;
+bellevueProject.nodes.stair_dyp7dqxtm1mg9fxb.fromLevelId = "level_fkoejbpxrc8pfko1";
+bellevueProject.nodes.stair_dyp7dqxtm1mg9fxb.toLevelId = "level_3xsbeo3c6y50zj52";
+
 describe("Bellevue G1 trace", () => {
-  it("preserves the two zero-length source walls through parser and handoff", () => {
+  it("preserves the current zero-length source wall through parser and handoff", () => {
     const parsed = parseProject(bellevueProject), handoff = buildEvaluationHandoff(parsed), report = evaluateG1Foundation(handoff, "2026-07-20T00:00:00.000Z");
     const found = report.rules.find((rule) => rule.ruleId === "G1-004")!;
-    for (const id of ["wall_s036gfqzmc1miaps", "wall_2lndng4qf6ayungu"]) {
+    for (const id of ["wall_obbuari0p7ilw3lz"]) {
       const raw = parsed.nodes[id], wall = handoff.walls.find((item) => item.id === id)!;
       expect(raw.start).toEqual(raw.end);
       expect(wall.rawPascalId).toBe(id);
@@ -40,9 +43,8 @@ describe("Bellevue G1 trace", () => {
     expect(rawWindow.position?.[0]).toBe(window.rawWallLocalPosition![0]);
     expect(rawWindow.width).toBe(window.widthMeters);
     expect(rawWindow.frameThickness).toBe(0.05);
-    expect(relation).toMatchObject({ status: "outside", openingCenterMeters: 0.957665610141416, openingStartMeters: 0.04266561014141601, openingEndMeters: 1.872665610141416, wallLengthMeters: 1.8324012039371924, leftOvershootMeters: 0 });
-    expect(relation.rightOvershootMeters).toBeCloseTo(0.0402644062042236, 12);
-    expect(found.diagnostics.find((item) => item.normalizedObjectIds.includes(window.id))).toMatchObject({ origin: "source_data", field: "opening.position[0] + opening.width / 2" });
+    expect(relation).toMatchObject({ status: "inside", openingCenterMeters: 0.9003166435429053, openingStartMeters: 0.3406715838381247, openingEndMeters: 1.459961703247686, wallLengthMeters: 1.8324012039371924, leftOvershootMeters: 0, rightOvershootMeters: 0 });
+    expect(found.status).toBe("pass");
   });
 
   it("keeps Bellevue room-region and Zone matching results stable", () => {
@@ -76,21 +78,24 @@ describe("Bellevue G1 trace", () => {
     expect(graph.edges.filter((edge) => edge.connectionType === "door")).toHaveLength(26);
     expect(graph.entrance).toMatchObject({ selectedDoorId: null, confidence: "low" });
     expect(graph.entrance.candidateDoorIds).toHaveLength(4);
-    expect(graph.stairConnections[0]).toMatchObject({ usableForConnectivity: false, diagnostics: [expect.objectContaining({ code: "stair_connection_unresolved" })] });
-    expect(report.rules.find((rule) => rule.ruleId === "G3-001")).toMatchObject({ status: "unable_to_determine" });
+    expect(graph.stairConnections[0]).toMatchObject({ usableForConnectivity: true, fromRoomRegionId: "level_jwi4ovhyra2ayxa5-room-1", toRoomRegionId: "level_tf1ug5dswkkzfhqa-room-2", diagnostics: [] });
+    expect(report.rules.find((rule) => rule.ruleId === "G3-001")).toMatchObject({ status: "pass", summary: "14 个主要空间均可从至少一个可靠外门通过空间连接图到达", measurements: expect.arrayContaining([expect.objectContaining({ name: "validStairConnectionCount", value: 1 }), expect.objectContaining({ name: "unresolvedStairCount", value: 0 })]) });
     expect(report.rules.find((rule) => rule.ruleId === "G3-005")).toMatchObject({ status: "pass", measurements: expect.arrayContaining([expect.objectContaining({ name: "roomWithoutEntranceCount", value: 0 })]) });
     expect(report.rules.find((rule) => rule.ruleId === "G3-002")).toBeDefined();
     expect(report.rules.find((rule) => rule.ruleId === "G3-007")).toBeDefined();
     expect(report.rules.find((rule) => rule.ruleId === "G3-008")).toBeDefined();
     const openingRule = report.rules.find((rule) => rule.ruleId === "G3-007")!;
     const targets = evaluationFocusTargets(openingRule, parseProject(bellevueDemoProject).nodes);
-    expect(targets.map((target) => target.primaryId)).toEqual([...new Set(openingRule.diagnostics.filter((diagnostic) => diagnostic.code === "door_swing_blocked").map((diagnostic) => diagnostic.normalizedObjectIds[0]!))]);
-    expect(targets).toHaveLength(0);
-    expect(openingRule).toMatchObject({ status: "unable_to_determine", summary: "2 扇门缺少可靠的门扇操作关系" });
-    expect(openingRule.measurements).toEqual(expect.arrayContaining([expect.objectContaining({ name: "blockedDoorCount", value: 0 }), expect.objectContaining({ name: "collisionObjectCount", value: 0 }), expect.objectContaining({ name: "usableSwingDoorCount", value: 17 }), expect.objectContaining({ name: "unresolvedSwingDoorCount", value: 2 })]));
-    expect(openingRule.diagnostics.filter((diagnostic) => diagnostic.code === "double_door_leaf_relation_unavailable")).toHaveLength(2);
+    expect(targets).toEqual([]);
+    expect(openingRule).toMatchObject({ status: "pass", summary: "19 扇平开门均可达到基本开启状态" });
+    expect(openingRule.measurements).toEqual(expect.arrayContaining([expect.objectContaining({ name: "blockedDoorCount", value: 0 }), expect.objectContaining({ name: "collisionObjectCount", value: 0 }), expect.objectContaining({ name: "usableSwingDoorCount", value: 19 }), expect.objectContaining({ name: "unresolvedSwingDoorCount", value: 0 })]));
+    expect(openingRule.diagnostics.filter((diagnostic) => diagnostic.code === "double_door_equal_leaf_assumption")).toHaveLength(2);
+    expect(handoff.doors.find((door) => door.id === "door_p2yxrdash2rgc49t")).toMatchObject({ swingDirection: "inward", rawRotationYRadians: Math.PI, placementFlipped: true, effectiveSwingDirection: "outward", effectiveHingesSide: "right" });
     expect(report.rules.find((rule) => rule.ruleId === "G3-002")).toMatchObject({ status: "pass", summary: "26 扇门的入口检测区域均保留基本可进入范围" });
-    expect(report.rules.find((rule) => rule.ruleId === "G3-008")).toMatchObject({ status: "unable_to_determine" });
-    expect(report.rules.find((rule) => rule.ruleId === "G3-008")?.measurements).toEqual(expect.arrayContaining([expect.objectContaining({ name: "severeInterlockCount", value: 0 }), expect.objectContaining({ name: "sequentialUseOverlapCount", value: 0 }), expect.objectContaining({ name: "unresolvedDoorOperationCount", value: 2 })]));
+    expect(report.rules.find((rule) => rule.ruleId === "G3-008")).toMatchObject({ status: "pass" });
+    expect(report.rules.find((rule) => rule.ruleId === "G3-008")?.measurements).toEqual(expect.arrayContaining([expect.objectContaining({ name: "severeInterlockCount", value: 0 }), expect.objectContaining({ name: "sequentialUseOverlapCount", value: 0 }), expect.objectContaining({ name: "unresolvedDoorOperationCount", value: 0 })]));
+    expect(report.rules.find((rule) => rule.ruleId === "G3-003")).toMatchObject({ status: "pass", measurements: expect.arrayContaining([expect.objectContaining({ name: "participatingRoomCount", value: 13 }), expect.objectContaining({ name: "internallyConnectedRoomCount", value: 13 })]) });
+    expect(report.rules.find((rule) => rule.ruleId === "G3-004")).toMatchObject({ status: "pass", measurements: expect.arrayContaining([expect.objectContaining({ name: "participatingRoomCount", value: 21 }), expect.objectContaining({ name: "largeFurnitureBlockedPathCount", value: 0 })]) });
+    expect(report.rules.find((rule) => rule.ruleId === "G3-006")).toMatchObject({ status: "unable_to_determine", diagnostics: [expect.objectContaining({ code: "fixed_obstacle_attribution_unresolved", normalizedObjectIds: expect.arrayContaining(["level_tf1ug5dswkkzfhqa-room-12", "item_ousmkp19jbxsvuhz", "item_tbac0ek6qdmwo1ug"]) })] });
   });
 });

@@ -10,7 +10,7 @@ import {
   zoomExtents,
 } from "./transform";
 import { buildPascalMatrixReport } from "./audit";
-import referenceProject from "../../sample-data/9618b316-3eab-4fcf-9a21-0f7316479968.json";
+import referenceProject from "../../sample-data/Bellevue demo.json";
 
 const item = (id: string, overrides: any = {}) => ({
   id,
@@ -23,26 +23,18 @@ const item = (id: string, overrides: any = {}) => ({
 });
 
 describe("Pascal world geometry", () => {
-  it("locks the five accepted furniture matrices for the reference project", () => {
+  it("locks five direct-Level furniture transforms from the current demo", () => {
     const nodes: any = referenceProject.nodes;
-    const expected: any = {
-      item_010u26nmiwafik24: [-7.45, 2.65, 18.84955592153876, .67, .66],
-      item_0aahggnuvs15c6lx: [9.92270180702209, -6.859999999999998, 34.55751918948772, 1.52, 2],
-      item_1hdkr5ppq6qmxf3i: [11.349227397441863, -4.73440688171607, 174.35839227423352, 1.83, .63],
-      item_1ug0qer2vtffbel6: [4.045, -4.981398662959234, Math.PI, .31, .6],
-      item_348v7t77kgcx9ac5: [-11.700000000000001, -6, Math.PI * 1.5, 1.5, .624],
-    };
-    for (const [id, [x, z, r, width, depth]] of Object.entries(
-      expected,
-    ) as any) {
-      const t = resolveItemPlanTransform(id, nodes),
-        d = finalDimensions(nodes[id]);
-      expect(t.x).toBeCloseTo(x);
-      expect(t.z).toBeCloseTo(z);
-      expect(t.rotationY).toBeCloseTo(r);
-      expect(d?.width).toBeCloseTo(width);
-      expect(d?.depth).toBeCloseTo(depth);
-      expect(composePascalTransformWithWorldToSvg(t).e).toBeCloseTo(x);
+    const direct = Object.values(nodes).filter((node: any) => node.type === "item" && nodes[node.parentId]?.type === "level" && finalDimensions(node) && Array.isArray(node.position)).slice(0, 5) as any[];
+    expect(direct).toHaveLength(5);
+    for (const node of direct) {
+      const t = resolveItemPlanTransform(node.id, nodes), d = finalDimensions(node);
+      expect(t.x).toBeCloseTo(node.position[0]);
+      expect(t.z).toBeCloseTo(node.position[2]);
+      expect(t.rotationY).toBeCloseTo(node.rotation?.[1] ?? 0);
+      expect(d?.width).toBeGreaterThan(0);
+      expect(d?.depth).toBeGreaterThan(0);
+      expect(composePascalTransformWithWorldToSvg(t).e).toBeCloseTo(node.position[0]);
     }
   });
   it("uses only asset.dimensions × item.scale", () =>

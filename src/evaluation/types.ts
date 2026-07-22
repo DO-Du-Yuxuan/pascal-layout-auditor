@@ -83,6 +83,16 @@ export type GeometryTolerances = {
   doorOperationMinimumAngleRadians: number;
   doorCollisionAreaSquareMeters: number;
   doorLeafThicknessMeters: number;
+  basicPassageWidthMeters: number;
+  personRadiusMeters: number;
+  navigationGridMeters: number;
+  portalLandingSearchMeters: number;
+  largeFurnitureMinimumAreaSquareMeters: number;
+  smallObjectMaximumAreaSquareMeters: number;
+  physicalCollisionAreaSquareMeters: number;
+  physicalCollisionVerticalMeters: number;
+  stairLandingSampleClearanceMeters: number;
+  stairLandingSampleDepthMeters: number;
 };
 
 export type G1Rule = (handoff: EvaluationHandoff) => RuleResult;

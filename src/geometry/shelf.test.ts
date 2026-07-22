@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import reference from '../../sample-data/9618b316-3eab-4fcf-9a21-0f7316479968.json';
+import reference from '../../sample-data/Bellevue demo.json';
 import { finalDimensions, resolveAncestorLevelId, resolveItemPlanTransform } from './transform';
 import { hasValidShelfFootprint, resolveShelfData, resolveShelfPlanTransform, shelfCorners, shelfDividerXs, shelfMatrix } from './shelf';
 

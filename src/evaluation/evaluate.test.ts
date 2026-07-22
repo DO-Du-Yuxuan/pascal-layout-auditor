@@ -61,6 +61,25 @@ describe("G1 foundation evaluator", () => {
     expect(rule(evaluateG1Foundation(handoff), "G1-013").status).toBe("unable_to_determine");
   });
 
+  it("reports furniture wall penetration and same-height physical collision in G1-023", () => {
+    const handoff = fixture(), first = handoff.furniture[0], second = { ...structuredClone(first), id: "collision-related", rawPascalId: "collision-related" };
+    first.levelId = handoff.walls[0].levelId;
+    first.resolvedWorldPosition = handoff.walls[0].start;
+    first.resolvedRotationRadians = 0;
+    first.rawPosition = [handoff.walls[0].start![0], 0, handoff.walls[0].start![1]];
+    first.dimensionsMeters = [1, 1, 1];
+    (first as any).resolvedVerticalRangeMeters = [0, 1];
+    second.levelId = first.levelId;
+    second.resolvedWorldPosition = first.resolvedWorldPosition;
+    second.rawPosition = first.rawPosition;
+    second.dimensionsMeters = first.dimensionsMeters;
+    (second as any).resolvedVerticalRangeMeters = [.2, 1.2];
+    handoff.furniture = [first, second];
+    const found = rule(evaluateG1Foundation(handoff), "G1-023");
+    expect(found.status).toBe("issue");
+    expect(found.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: "item_penetrates_wall" }), expect.objectContaining({ code: "item_physical_collision", normalizedObjectIds: expect.arrayContaining([first.id, second.id]) })]));
+  });
+
   it("retains invalid wall-footprint diagnostics and refuses to guess", () => {
     const handoff = fixture();
     handoff.doors = [handoff.doors[0]];

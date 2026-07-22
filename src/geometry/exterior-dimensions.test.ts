@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import referenceProject from "../../sample-data/9618b316-3eab-4fcf-9a21-0f7316479968.json";
+import referenceProject from "../../sample-data/Bellevue demo.json";
 import { buildAlignedDimensionDisplay, buildExteriorDimensions, dimensionDisplayGeometry, dimensionOverlayBounds, formatDimensionMetersToMillimeters, POSITION_TOLERANCE_M, signedRingArea, uprightDimensionAngle } from "./exterior-dimensions";
 
 const level = { id: "level", type: "level" };

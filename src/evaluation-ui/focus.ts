@@ -7,7 +7,7 @@ import type { NodeData } from "../types";
 import type { EvaluationFocusTarget } from "./presentation";
 import type { RoomRegionAnalysis } from "../evaluation/room-regions";
 
-export type EvaluationHighlight = { ruleId: string; primaryId: string; relatedIds: string[]; targetIndex: number };
+export type EvaluationHighlight = { ruleId: string; primaryId: string; relatedIds: string[]; targetIndex: number; status?: EvaluationFocusTarget["status"] };
 export type EvaluationFocusResolution = { renderable: boolean; levelId: string | null; viewBox: ViewBox | null; reason?: string };
 
 const finitePoint = (value: unknown): value is number[] => Array.isArray(value) && value.length >= 2 && value.slice(0, 2).every(Number.isFinite);
@@ -43,7 +43,7 @@ export function resolveEvaluationFocus(nodes: Record<string, NodeData>, objectId
 }
 
 export function evaluationHighlightFor(ruleId: string, target: EvaluationFocusTarget, targetIndex: number): EvaluationHighlight {
-  return { ruleId, primaryId: target.primaryId, relatedIds: [...target.relatedIds], targetIndex };
+  return { ruleId, primaryId: target.primaryId, relatedIds: [...target.relatedIds], targetIndex, status: target.status };
 }
 
 export function evaluationHighlightRole(highlight: EvaluationHighlight | null, objectId: string): "primary" | "related" | null {

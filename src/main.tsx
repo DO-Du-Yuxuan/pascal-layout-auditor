@@ -9,6 +9,7 @@ import {
   composePascalTransformWithWorldToSvg,
   finalDimensions,
   normalizeDegrees,
+  resolveDoorOperationOrientation,
   resolveAncestorLevelId,
   resolveItemPlanTransform,
   resolveWallOpeningTransform,
@@ -37,6 +38,8 @@ import { buildBuildingEnvelopes, BuildingEnvelope } from "./evaluation/envelope"
 import { buildRoomRegionAnalysis, RoomRegionAnalysis } from "./evaluation/room-regions";
 import { buildRoomConnectivityGraph, reachableNodeIds, RoomConnectivityGraph } from "./evaluation/connectivity";
 import { buildDoorOperations, type DoorOperation } from "./evaluation/door-operations";
+import { navigationAnalysis } from "./evaluation/g3-navigation-rules";
+import type { RoomNavigationAnalysis } from "./evaluation/navigation";
 
 type Visibility = {
   images: boolean;
@@ -99,6 +102,8 @@ function App() {
     [showConnectivity, setShowConnectivity] = useState(false),
     [doorOperations, setDoorOperations] = useState<DoorOperation[]>([]),
     [showDoorOperationDebug, setShowDoorOperationDebug] = useState(false),
+    [roomNavigationAnalysis, setRoomNavigationAnalysis] = useState<RoomNavigationAnalysis | null>(null),
+    [showNavigableSpace, setShowNavigableSpace] = useState(false),
     [evaluationError, setEvaluationError] = useState<string | null>(null),
     [evaluationHighlights, setEvaluationHighlights] = useState<EvaluationHighlight[]>([]),
     [activeEvaluationHighlight, setActiveEvaluationHighlight] = useState<EvaluationHighlight | null>(null),
@@ -107,7 +112,7 @@ function App() {
   const input = useRef<HTMLInputElement>(null), nextMeasurementId = useRef(1), evaluationRuleElements = useRef<Record<string, HTMLElement | null>>({});
   const nodes = data?.nodes || {};
   const levels = Object.values(nodes).filter((n) => n.type === "level");
-  useEffect(() => { const closeMeasurement = (event: KeyboardEvent) => { if (event.key === "Escape") setMeasurementMode("off"); }; window.addEventListener("keydown", closeMeasurement); return () => window.removeEventListener("keydown", closeMeasurement); }, []);
+  useEffect(() => { const closeTransientUi = (event: KeyboardEvent) => { if (event.key !== "Escape") return; setMeasurementMode("off"); setEvaluationHighlights([]); setActiveEvaluationHighlight(null); setEvaluationFocusMessage(null); }; window.addEventListener("keydown", closeTransientUi); return () => window.removeEventListener("keydown", closeTransientUi); }, []);
   useEffect(() => subscribeFloorplanImageCrop(() => setImageCropRevision((revision) => revision + 1)), []);
   const load = (text: string, name: string) => {
     try {
@@ -128,6 +133,8 @@ function App() {
       setShowConnectivity(false);
       setDoorOperations([]);
       setShowDoorOperationDebug(false);
+      setRoomNavigationAnalysis(null);
+      setShowNavigableSpace(false);
       setEvaluationError(null);
       setEvaluationHighlights([]);
       setActiveEvaluationHighlight(null);
@@ -154,6 +161,12 @@ function App() {
       setShowBuildingEnvelope(false);
       setRoomRegionAnalysis(null);
       setShowRoomRegions(false);
+      setConnectivityGraph(null);
+      setShowConnectivity(false);
+      setDoorOperations([]);
+      setShowDoorOperationDebug(false);
+      setRoomNavigationAnalysis(null);
+      setShowNavigableSpace(false);
       setEvaluationError(null);
       setEvaluationHighlights([]);
       setActiveEvaluationHighlight(null);
@@ -211,12 +224,13 @@ function App() {
   const runFoundationEvaluation = () => {
     if (!data) return;
     try {
-      const handoff = buildEvaluationHandoff(data), analysis = buildRoomRegionAnalysis(handoff), graph = buildRoomConnectivityGraph(handoff, analysis), operations = buildDoorOperations(handoff), report = evaluateFoundation(handoff);
+      const handoff = buildEvaluationHandoff(data), analysis = buildRoomRegionAnalysis(handoff), graph = buildRoomConnectivityGraph(handoff, analysis), operations = buildDoorOperations(handoff), report = evaluateFoundation(handoff), navigation = navigationAnalysis(handoff);
       setEvaluationReport(report);
       setBuildingEnvelopes(buildBuildingEnvelopes(handoff));
       setRoomRegionAnalysis(analysis);
       setConnectivityGraph(graph);
       setDoorOperations(operations);
+      setRoomNavigationAnalysis(navigation);
       setEvaluationHighlights(evaluationIssueTargets(report.rules, nodes, analysis).map((target) => evaluationHighlightFor(target.ruleId, target, target.targetIndex)));
       setActiveEvaluationHighlight(null);
       setEvaluationError(null);
@@ -316,6 +330,7 @@ function App() {
               <label><input type="checkbox" checked={showRoomRegions} onChange={() => setShowRoomRegions((shown) => !shown)} />显示识别空间</label>
               <label><input type="checkbox" checked={showConnectivity} disabled={!connectivityGraph} onChange={() => setShowConnectivity((shown) => !shown)} />显示空间连接</label>
               <label><input type="checkbox" checked={showDoorOperationDebug} disabled={!doorOperations.length} onChange={() => setShowDoorOperationDebug((shown) => !shown)} />显示门操作区域</label>
+              <label><input type="checkbox" checked={showNavigableSpace} disabled={!roomNavigationAnalysis} onChange={() => setShowNavigableSpace((shown) => !shown)} />显示可通行空间</label>
             </div>
           </section>
           <Inspector
@@ -363,6 +378,8 @@ function App() {
                 showConnectivity={showConnectivity}
                 doorOperations={doorOperations}
                 showDoorOperationDebug={showDoorOperationDebug}
+                navigationAnalysis={roomNavigationAnalysis}
+                showNavigableSpace={showNavigableSpace}
                 measurementMode={measurementMode}
                 measurementUnit={measurementUnit}
                 manualMeasurements={manualMeasurements.filter((item) => item.levelId === (canvas.levelId || levels[0]?.id || ""))}
@@ -401,6 +418,8 @@ function CanvasPanel({
   showConnectivity,
   doorOperations,
   showDoorOperationDebug,
+  navigationAnalysis,
+  showNavigableSpace,
   onSelect,
   onClearEvaluationHighlight,
   onActivateEvaluationHighlight,
@@ -431,6 +450,8 @@ function CanvasPanel({
   showConnectivity: boolean;
   doorOperations: DoorOperation[];
   showDoorOperationDebug: boolean;
+  navigationAnalysis: RoomNavigationAnalysis | null;
+  showNavigableSpace: boolean;
   onSelect: (id: string | null) => void;
   onClearEvaluationHighlight: () => void;
   onActivateEvaluationHighlight: (highlight: EvaluationHighlight) => void;
@@ -521,6 +542,8 @@ function CanvasPanel({
         showConnectivity={showConnectivity}
         doorOperations={doorOperations}
         showDoorOperationDebug={showDoorOperationDebug}
+        navigationAnalysis={navigationAnalysis}
+        showNavigableSpace={showNavigableSpace}
         onSelect={onSelect}
         onClearEvaluationHighlight={onClearEvaluationHighlight}
         onActivateEvaluationHighlight={onActivateEvaluationHighlight}
@@ -604,6 +627,8 @@ function Plan({
   showConnectivity,
   doorOperations,
   showDoorOperationDebug,
+  navigationAnalysis,
+  showNavigableSpace,
   onSelect,
   onClearEvaluationHighlight,
   onActivateEvaluationHighlight,
@@ -633,6 +658,8 @@ function Plan({
   showConnectivity: boolean;
   doorOperations: DoorOperation[];
   showDoorOperationDebug: boolean;
+  navigationAnalysis: RoomNavigationAnalysis | null;
+  showNavigableSpace: boolean;
   onSelect: (id: string | null) => void;
   onClearEvaluationHighlight: () => void;
   onActivateEvaluationHighlight: (highlight: EvaluationHighlight) => void;
@@ -832,6 +859,7 @@ function Plan({
           </g>
           {highlightsOnLevel.length > 0 && <EvaluationHighlightOverlay highlights={highlightsOnLevel} activeHighlight={activeEvaluationHighlight} nodes={nodes} exactWalls={exactWalls} onActivate={onActivateEvaluationHighlight} />}
           {(showDoorOperationDebug || activeEvaluationHighlight?.ruleId === "G3-002" || activeEvaluationHighlight?.ruleId === "G3-007" || activeEvaluationHighlight?.ruleId === "G3-008") && <DoorOperationOverlay operations={doorOperations} levelId={levelId} activeHighlight={activeEvaluationHighlight} showDebug={showDoorOperationDebug} />}
+          {navigationAnalysis && (showNavigableSpace || Boolean(activeEvaluationHighlight && ["G3-003", "G3-004", "G3-006"].includes(activeEvaluationHighlight.ruleId))) && <NavigableSpaceOverlay analysis={navigationAnalysis} levelId={levelId} activeHighlight={activeEvaluationHighlight} showDebug={showNavigableSpace} />}
           {showBuildingEnvelope && buildingEnvelope?.usableForEvaluation && <BuildingEnvelopeOverlay envelope={buildingEnvelope} />}
           {roomAnalysis && (showRoomRegions || highlightsOnLevel.some((highlight) => roomAnalysis.rooms.some((room) => room.roomRegionId === highlight.primaryId))) && <RoomRegionOverlay analysis={roomAnalysis} nodes={nodes} levelId={levelId} showAll={showRoomRegions} highlights={highlightsOnLevel} onActivate={onActivateEvaluationHighlight} />}
           {showConnectivity && connectivityGraph && <ConnectivityOverlay graph={connectivityGraph} nodes={nodes} levelId={levelId} />}
@@ -839,10 +867,11 @@ function Plan({
       </svg>
       {measurementMode !== "off" && <div className="measure-hint">{measurementStart ? `${orthogonalLock ? activeMeasurementMode === "horizontal" ? "水平正交已开启" : "垂直正交已开启" : "自由对齐"} · 点击第二点 · Shift 切换正交 · Esc 退出` : `${orthogonalLock ? "正交已开启" : "正交已关闭"} · 点击第一点 · Shift 切换正交 · Esc 退出`}</div>}
       <Compass rotation={rotation} />
-      {highlightsOnLevel.length > 0 && <div className="evaluation-highlight-legend"><span><i className="primary" />问题对象（点击红框查看说明）</span><span><i className="related" />关联对象</span><span><i className="muted" />其他对象</span><button onClick={onClearEvaluationHighlight}>关闭高亮</button></div>}
+      {highlightsOnLevel.length > 0 && <div className="evaluation-highlight-legend"><span><i className="primary" />确定问题</span>{highlightsOnLevel.some((highlight) => highlight.status === "unable_to_determine") && <span><i className="unresolved" />待核验对象</span>}<span><i className="related" />关联对象</span><span><i className="muted" />其他对象</span><button onClick={onClearEvaluationHighlight}>关闭高亮</button></div>}
       {showRoomRegions && <div className="room-region-legend"><span><i className="room" />Room Region（物理空间）</span><span><i className="zone" />Zone（功能区域）</span><span><i className="warning" />未匹配/部分匹配</span></div>}
       {showConnectivity && connectivityGraph && <div className="connectivity-legend"><span><i className="reachable" />可达节点</span><span><i className="unreachable" />不可达/无入口</span><span><i className="portal" />有效门连接</span><span><i className="unresolved" />未解析门或楼梯</span></div>}
       {showDoorOperationDebug && <div className="door-operation-legend"><span><i className="swing" />门扇扫掠</span><span><i className="entry" />入口检测区域</span></div>}
+      {showNavigableSpace && navigationAnalysis && <div className="navigable-space-legend"><span><i className="free" />可通行区域</span><span><i className="occupied" />障碍占用</span><span><i className="path" />已连接路径</span><span><i className="interruption" />路径中断</span><span><i className="blocker" />阻挡对象</span></div>}
       <div className="legend">{formatPanelLength(viewBox.width, measurementUnit)} × {formatPanelLength(viewBox.height, measurementUnit)}</div>
     </div>
   );
@@ -851,13 +880,38 @@ function DoorOperationOverlay({ operations, levelId, activeHighlight, showDebug 
   const activeDoorIds = new Set(activeHighlight && ["G3-002", "G3-007", "G3-008"].includes(activeHighlight.ruleId) ? [activeHighlight.primaryId, ...activeHighlight.relatedIds] : []);
   return <g className="door-operation-overlay" pointerEvents="none">
     {operations.filter((operation) => operation.levelId === levelId && operation.usableForEvaluation && (showDebug || activeDoorIds.has(operation.doorId))).map((operation) => {
-      const active = activeDoorIds.has(operation.doorId);
+      const active = activeDoorIds.has(operation.doorId), activeColor = activeHighlight?.status === "unable_to_determine" ? "#d8a449" : "#e23d35";
       return <g key={operation.doorId} data-door-operation={operation.doorId}>
         {operation.entryPolygon.length >= 3 && (showDebug || activeHighlight?.ruleId === "G3-002") && <polygon points={operation.entryPolygon.map(([x, z]) => `${x},${z}`).join(" ")} fill="#ed8b2c" fillOpacity={active ? ".18" : ".06"} stroke="#ed8b2c" strokeDasharray="5 3" strokeWidth={active ? "2" : "1"} vectorEffect="non-scaling-stroke" />}
-        {(active ? operation.requiredSwingPolygon : operation.swingPolygon).length >= 3 && (showDebug || activeHighlight?.ruleId === "G3-007" || activeHighlight?.ruleId === "G3-008") && <polygon points={(active ? operation.requiredSwingPolygon : operation.swingPolygon).map(([x, z]) => `${x},${z}`).join(" ")} fill={active ? "#e23d35" : "#7b8790"} fillOpacity={active ? ".22" : ".05"} stroke={active ? "#e23d35" : "#7b8790"} strokeDasharray="5 3" strokeWidth={active ? "2" : "1"} vectorEffect="non-scaling-stroke" />}
-        {operation.hingePoint && <circle cx={operation.hingePoint[0]} cy={operation.hingePoint[1]} r={active ? ".08" : ".05"} fill={active ? "#e23d35" : "#7b8790"} />}
+        {(showDebug || activeHighlight?.ruleId === "G3-007" || activeHighlight?.ruleId === "G3-008") && operation.leaves.map((leaf) => { const polygon = active ? leaf.requiredSwingPolygon : leaf.swingPolygon; return <g key={leaf.leafIndex}><polygon points={polygon.map(([x, z]) => `${x},${z}`).join(" ")} fill={active ? activeColor : "#7b8790"} fillOpacity={active ? ".22" : ".05"} stroke={active ? activeColor : "#7b8790"} strokeDasharray="5 3" strokeWidth={active ? "2" : "1"} vectorEffect="non-scaling-stroke" /><circle cx={leaf.hingePoint[0]} cy={leaf.hingePoint[1]} r={active ? ".08" : ".05"} fill={active ? activeColor : "#7b8790"} /></g>; })}
       </g>;
     })}
+  </g>;
+}
+function NavigableSpaceOverlay({ analysis, levelId, activeHighlight, showDebug }: { analysis: RoomNavigationAnalysis; levelId: string; activeHighlight: EvaluationHighlight | null; showDebug: boolean }) {
+  const navigationRuleActive = Boolean(activeHighlight && ["G3-003", "G3-004", "G3-006"].includes(activeHighlight.ruleId));
+  const activeRoomId = navigationRuleActive ? activeHighlight?.primaryId ?? null : null;
+  const activeBlockerIds = new Set(navigationRuleActive ? activeHighlight?.relatedIds ?? [] : []);
+  const rooms = analysis.rooms.filter((room) => room.levelId === levelId && (showDebug || room.roomRegionId === activeRoomId));
+  const rowRuns = (points: Array<[number, number]>, step: number) => {
+    const rows = new Map<number, number[]>();
+    points.forEach(([x, z]) => { const row = Math.round(z / step); rows.set(row, [...(rows.get(row) ?? []), Math.round(x / step)]); });
+    return [...rows.entries()].flatMap(([row, columns]) => {
+      const sorted = [...new Set(columns)].sort((a, b) => a - b), runs: Array<{ x: number; z: number; width: number }> = [];
+      let start = sorted[0], end = sorted[0];
+      for (const column of sorted.slice(1)) { if (column === end! + 1) end = column; else { runs.push({ x: start! * step, z: row * step, width: (end! - start! + 1) * step }); start = end = column; } }
+      if (start !== undefined && end !== undefined) runs.push({ x: start * step, z: row * step, width: (end - start + 1) * step });
+      return runs;
+    });
+  };
+  const obstacleIds = new Set(rooms.flatMap((room) => [...room.fixedBlockerIds, ...room.largeFurnitureBlockerIds, ...room.uncertainObjectIds]));
+  const obstacles = analysis.obstacles.filter((obstacle) => obstacle.levelId === levelId && obstacle.footprint.length >= 3 && obstacle.role !== "excluded" && (showDebug || activeBlockerIds.has(obstacle.objectId) || obstacleIds.has(obstacle.objectId)));
+  return <g className="navigable-space-overlay" pointerEvents="none">
+    {rooms.flatMap((room) => rowRuns(room.navigableFreeCells, room.gridMeters).map((run, index) => <rect key={`${room.roomRegionId}-free-${index}`} x={run.x - room.gridMeters / 2} y={run.z - room.gridMeters / 2} width={run.width} height={room.gridMeters} fill="#36a269" fillOpacity=".16" />))}
+    {obstacles.map((obstacle) => { const blocker = activeBlockerIds.has(obstacle.objectId); return <polygon key={obstacle.objectId} points={obstacle.footprint.map(([x, z]) => `${x},${z}`).join(" ")} fill={blocker ? "#ed8b2c" : "#737d78"} fillOpacity={blocker ? ".30" : ".18"} stroke={blocker ? "#ed8b2c" : "#737d78"} strokeWidth={blocker ? "2" : "1"} vectorEffect="non-scaling-stroke" />; })}
+    {rooms.flatMap((room) => room.paths.map((path, index) => path.points.length >= 2 ? <polyline key={`${room.roomRegionId}-path-${index}`} points={path.points.map(([x, z]) => `${x},${z}`).join(" ")} fill="none" stroke={path.status === "connected" ? "#1686a0" : activeHighlight?.status === "unable_to_determine" ? "#d8a449" : "#e23d35"} strokeDasharray={path.status === "blocked" ? "5 3" : undefined} strokeWidth={path.status === "blocked" ? "2.5" : "1.6"} vectorEffect="non-scaling-stroke" /> : null))}
+    {rooms.flatMap((room) => room.portalNodes.flatMap((portal) => [<circle key={`${room.roomRegionId}-${portal.doorId}-source`} cx={portal.sourcePoint[0]} cy={portal.sourcePoint[1]} r=".07" fill="#fff" stroke="#1686a0" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />, portal.furnishedLanding ? <circle key={`${room.roomRegionId}-${portal.doorId}-landing`} cx={portal.furnishedLanding[0]} cy={portal.furnishedLanding[1]} r=".055" fill="#1686a0" /> : <g key={`${room.roomRegionId}-${portal.doorId}-missing`} transform={`translate(${portal.sourcePoint[0]} ${portal.sourcePoint[1]})`}><path d="M-.09,-.09 L.09,.09 M.09,-.09 L-.09,.09" stroke="#e23d35" strokeWidth="2" vectorEffect="non-scaling-stroke" /></g>]))}
+    {rooms.filter((room) => room.anchorPoint).map((room) => <g key={`${room.roomRegionId}-anchor`} transform={`translate(${room.anchorPoint![0]} ${room.anchorPoint![1]})`}><circle r=".08" fill="#fff" stroke="#1686a0" strokeWidth="1.5" vectorEffect="non-scaling-stroke"/><circle r=".025" fill="#1686a0"/></g>)}
   </g>;
 }
 function BuildingEnvelopeOverlay({ envelope }: { envelope: BuildingEnvelope }) {
@@ -866,7 +920,7 @@ function BuildingEnvelopeOverlay({ envelope }: { envelope: BuildingEnvelope }) {
 function RoomRegionOverlay({ analysis, nodes, levelId, showAll, highlights, onActivate }: { analysis: RoomRegionAnalysis; nodes: Record<string, NodeData>; levelId: string; showAll: boolean; highlights: EvaluationHighlight[]; onActivate: (highlight: EvaluationHighlight) => void }) {
   const rooms = analysis.rooms.filter((room) => room.levelId === levelId), matches = new Map(analysis.zoneMatches.map((match) => [match.zoneId, match]));
   return <g className="room-region-overlay">
-    {rooms.map((room, index) => { const highlight = highlights.find((item) => item.primaryId === room.roomRegionId), warning = !room.usableForEvaluation || analysis.unmatchedRoomRegionIds.includes(room.roomRegionId), outer = room.polygons[0]?.[0] ?? [], center = outer.length ? { x: outer.reduce((sum, point) => sum + point[0], 0) / outer.length, z: outer.reduce((sum, point) => sum + point[1], 0) / outer.length } : null; if (!showAll && !highlight) return null; return <g key={room.roomRegionId} data-room-region={room.roomRegionId} className={highlight ? "problem-room" : warning ? "warning-room" : "matched-room"} onClick={highlight ? (event) => { event.stopPropagation(); onActivate(highlight); } : undefined}>{room.polygons.flatMap((polygon, polygonIndex) => polygon.map((ring, ringIndex) => <polygon key={`${polygonIndex}-${ringIndex}`} points={ring.map(([x, z]) => `${x},${z}`).join(" ")} fill={ringIndex ? "#f7f8f5" : highlight ? "#e23d35" : warning ? "#d8a449" : "#4f8f72"} fillOpacity={ringIndex ? 1 : .14} stroke={highlight ? "#e23d35" : warning ? "#d8a449" : "#4f8f72"} strokeWidth={highlight ? "3" : "1.5"} vectorEffect="non-scaling-stroke" />))}{showAll && center && <text x={center.x} y={center.z} className="room-region-label" textAnchor="middle" dominantBaseline="middle">R{index + 1} · {room.areaSquareMeters.toFixed(1)} m²</text>}</g>; })}
+    {rooms.map((room, index) => { const highlight = highlights.find((item) => item.primaryId === room.roomRegionId), highlightColor = highlight?.status === "unable_to_determine" ? "#d8a449" : "#e23d35", warning = !room.usableForEvaluation || analysis.unmatchedRoomRegionIds.includes(room.roomRegionId), outer = room.polygons[0]?.[0] ?? [], center = outer.length ? { x: outer.reduce((sum, point) => sum + point[0], 0) / outer.length, z: outer.reduce((sum, point) => sum + point[1], 0) / outer.length } : null; if (!showAll && !highlight) return null; return <g key={room.roomRegionId} data-room-region={room.roomRegionId} className={highlight ? "problem-room" : warning ? "warning-room" : "matched-room"} onClick={highlight ? (event) => { event.stopPropagation(); onActivate(highlight); } : undefined}>{room.polygons.flatMap((polygon, polygonIndex) => polygon.map((ring, ringIndex) => <polygon key={`${polygonIndex}-${ringIndex}`} points={ring.map(([x, z]) => `${x},${z}`).join(" ")} fill={ringIndex ? "#f7f8f5" : highlight ? highlightColor : warning ? "#d8a449" : "#4f8f72"} fillOpacity={ringIndex ? 1 : .14} stroke={highlight ? highlightColor : warning ? "#d8a449" : "#4f8f72"} strokeWidth={highlight ? "3" : "1.5"} vectorEffect="non-scaling-stroke" />))}{showAll && center && <text x={center.x} y={center.z} className="room-region-label" textAnchor="middle" dominantBaseline="middle">R{index + 1} · {room.areaSquareMeters.toFixed(1)} m²</text>}</g>; })}
     {showAll && Object.values(nodes).filter((node) => node.type === "zone" && resolveAncestorLevelId(node.id, nodes).levelId === levelId).map((zone) => { const points = zonePoints(zone), match = matches.get(zone.id), warning = match?.relationship === "unmatched-zone" || match?.relationship === "zone-crosses-rooms" || match?.relationship === "partial"; return points.length >= 3 ? <polygon key={zone.id} data-zone-match={match?.relationship ?? "unmatched-zone"} points={points.map((point) => `${point.x},${point.z}`).join(" ")} fill="none" stroke={warning ? "#d86756" : "#3569a8"} strokeDasharray="6 4" strokeWidth="2" vectorEffect="non-scaling-stroke" /> : null; })}
   </g>;
 }
@@ -897,7 +951,7 @@ function EvaluationHighlightOverlay({ highlights, activeHighlight, nodes, exactW
   return <g className="evaluation-highlight-overlay">{[...marked.entries()].map(([id, marker]) => {
     const { highlight, role } = marker, node = nodes[id];
     if (!node || !role) return null;
-    const color = role === "primary" ? "#e23d35" : "#ed8b2c", fillOpacity = role === "primary" ? .28 : .18, active = activeHighlight?.primaryId === highlight.primaryId;
+    const color = role === "primary" ? highlight.status === "unable_to_determine" ? "#d8a449" : "#e23d35" : "#ed8b2c", fillOpacity = role === "primary" ? .28 : .18, active = activeHighlight?.primaryId === highlight.primaryId;
     const activate = (event: React.MouseEvent<SVGElement>) => { event.preventDefault(); event.stopPropagation(); onActivate(highlight); };
     if (node.type === "wall") {
       const wall = wallById.get(id);
@@ -1076,13 +1130,9 @@ function Opening({
     const color = selected ? "#e75c3c" : "#9b6736",
       doorType = node.doorType ?? "hinged",
       isDouble = doorType === "double" || doorType === "french",
-      rotationY = Array.isArray(node.rotation) && Number.isFinite(node.rotation[1]) ? node.rotation[1] : 0,
-      normalizedRotation = ((rotationY % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2),
-      flipped = normalizedRotation > Math.PI / 2 && normalizedRotation < Math.PI * 3 / 2,
-      baseHinges = node.hingesSide ?? "left",
-      hinges = flipped ? (baseHinges === "left" ? "right" : "left") : baseHinges,
-      baseSwing = node.swingDirection ?? "inward",
-      swing = flipped ? (baseSwing === "inward" ? "outward" : "inward") : baseSwing,
+      orientation = resolveDoorOperationOrientation(node),
+      hinges = orientation.effectiveHingesSide,
+      swing = orientation.effectiveSwingDirection,
       swingSign = swing === "inward" ? 1 : -1;
     const leaf = (hingeX: number, closedVectorX: number, signedQuarterTurn: number, key: string) => {
       const radius = Math.abs(closedVectorX), closedTipX = hingeX + closedVectorX,
@@ -1326,6 +1376,7 @@ function Stats({ nodes }: { nodes: Record<string, NodeData> }) {
         <span>
           Item<b>{c("item")}</b>
         </span>
+        <span>Stair<b>{c("stair")}</b></span>
         <span>Shelf<b>{shelves.length}</b></span>
         <span>无效 Shelf<b>{invalidShelves.length}</b></span>
         <span>父级异常 Shelf<b>{parentIssueShelves.length}</b></span>
@@ -1355,7 +1406,7 @@ function EvaluationPanel({ report, nodes, roomAnalysis, error, focusMessage, act
             <div className="evaluation-rule-heading"><strong>{presentation.title}</strong><em>{evaluationStatusLabel[item.status]}</em></div>
             <p>{presentation.description}</p>
             <div className="designer-guidance"><span><b>为什么要处理</b>{presentation.rationale}</span><span><b>建议</b>{presentation.recommendation}</span>{presentation.supplemental && <span className="supplemental">{presentation.supplemental}</span>}</div>
-            <div className="evaluation-card-meta"><span>问题数量 <b>{presentation.problemCountLabel}</b></span><span>所在楼层 <b>{locations.length ? locations.join("、") : "—"}</b></span></div>
+            <div className="evaluation-card-meta"><span>{item.status === "unable_to_determine" ? "待核验数量" : "问题数量"} <b>{presentation.problemCountLabel}</b></span><span>所在楼层 <b>{locations.length ? locations.join("、") : "—"}</b></span></div>
             {target && <div className="evaluation-object-nav">
               <span className="evaluation-object-label">{target.label}</span>
               <div><button disabled={targetIndex === 0} aria-label={`${presentation.title} 上一处`} onClick={() => onFocus(item.ruleId, presentation.targets[targetIndex - 1]!, targetIndex - 1)}>上一处</button><b>{targetIndex + 1} / {presentation.targets.length}</b><button disabled={targetIndex >= presentation.targets.length - 1} aria-label={`${presentation.title} 下一处`} onClick={() => onFocus(item.ruleId, presentation.targets[targetIndex + 1]!, targetIndex + 1)}>下一处</button></div>

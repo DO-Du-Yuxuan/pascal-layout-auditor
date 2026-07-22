@@ -11,6 +11,7 @@ export function resolveAncestorLevelId(nodeId:string,nodes:Record<string,NodeDat
 export function validDimensions(item:NodeData):Vec3|null{const d=item.asset?.dimensions;return Array.isArray(d)&&d.length>=3&&d.every((v:any)=>Number.isFinite(v)&&v>0)?[d[0],d[1],d[2]]:null}
 export function validItemScale(item:NodeData):Vec3|null{const s=item.scale??[1,1,1];return Array.isArray(s)&&s.length>=3&&s.every((v:any)=>Number.isFinite(v)&&v>0)?[s[0],s[1],s[2]]:null}
 export function finalDimensions(item:NodeData){const d=validDimensions(item),s=validItemScale(item);return d&&s?{width:d[0]*s[0],height:d[1]*s[1],depth:d[2]*s[2]}:null}
+export function resolveItemVerticalRange(itemId:string,nodes:Record<string,NodeData>):{bottom:number;top:number;status:"ok"|"error";error?:string}{const item=nodes[itemId],dimensions=item?finalDimensions(item):null;if(!item||!dimensions)return{bottom:0,top:0,status:"error",error:item?"invalid_dimensions":"missing_item"};let bottom=0,current:NodeData|undefined=item;const seen=new Set<string>();while(current){if(seen.has(current.id))return{bottom:0,top:0,status:"error",error:"parent_cycle"};seen.add(current.id);if(current.type==="ceiling"||current.asset?.attachTo==="ceiling")return{bottom:0,top:0,status:"error",error:"ceiling_elevation_unresolved"};const y=Array.isArray(current.position)&&Number.isFinite(current.position[1])?current.position[1]:0;bottom+=y;if(!current.parentId)break;current=nodes[current.parentId];if(!current)return{bottom:0,top:0,status:"error",error:"missing_parent"};if(current.type==="level")break}return{bottom,top:bottom+dimensions.height,status:"ok"}}
 export function normalizeDegrees(radians:number){const degrees=radians*180/Math.PI;return((degrees%360)+360)%360}
 
 /** Returns Pascal Level-plane coordinates. rotationY is never converted to SVG here. */
@@ -23,6 +24,19 @@ export function svgMatrixString(matrix:AffineMatrix2D){return`matrix(${matrix.a}
 
 /** Door/window position[0] is the opening centre's distance along its parent wall. */
 export function resolveWallOpeningTransform(node:NodeData,nodes:Record<string,NodeData>){const wall=nodes[node.wallId||node.parentId||''];if(!wall||wall.type!=='wall')return null;const start=wallPoint(wall.start),end=wallPoint(wall.end),dx=end[0]-start[0],dz=end[1]-start[1],length=Math.hypot(dx,dz);if(!Number.isFinite(length)||length===0)return null;const distance=Array.isArray(node.position)&&Number.isFinite(node.position[0])?node.position[0]:0;return{x:start[0]+dx/length*distance,z:start[1]+dz/length*distance,rotationY:Math.atan2(dz,dx),ancestorLevelId:resolveAncestorLevelId(node.id,nodes).levelId,sourceNodeIds:[node.id,wall.id]}}
+export function resolveDoorOperationOrientation(node: NodeData) {
+  const rawRotationYRadians = Array.isArray(node.rotation) && Number.isFinite(node.rotation[1]) ? node.rotation[1] : 0,
+    normalizedRotation = ((rawRotationYRadians % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2),
+    placementFlipped = normalizedRotation > Math.PI / 2 && normalizedRotation < Math.PI * 3 / 2,
+    rawHingesSide = node.hingesSide ?? "left",
+    rawSwingDirection = node.swingDirection ?? "inward";
+  return {
+    rawRotationYRadians,
+    placementFlipped,
+    effectiveHingesSide: placementFlipped ? rawHingesSide === "left" ? "right" : "left" : rawHingesSide,
+    effectiveSwingDirection: placementFlipped ? rawSwingDirection === "inward" ? "outward" : "inward" : rawSwingDirection,
+  };
+}
 export type ViewBox={minX:number;minZ:number;width:number;height:number};
 export function zoomExtents(points:Array<{x:number;z:number}>,padding=1):ViewBox{if(!points.length)return{minX:-5,minZ:-5,width:10,height:10};const xs=points.map(p=>p.x),zs=points.map(p=>p.z),minX=Math.min(...xs)-padding,maxX=Math.max(...xs)+padding,minZ=Math.min(...zs)-padding,maxZ=Math.max(...zs)+padding;return{minX,minZ,width:Math.max(maxX-minX,1),height:Math.max(maxZ-minZ,1)}}
 export function zoomViewBoxAtPoint(viewBox:ViewBox,point:{x:number;z:number},factor:number):ViewBox{return{minX:point.x-(point.x-viewBox.minX)*factor,minZ:point.z-(point.z-viewBox.minZ)*factor,width:viewBox.width*factor,height:viewBox.height*factor}}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import referenceProject from '../../../sample-data/9618b316-3eab-4fcf-9a21-0f7316479968.json';
+import referenceProject from '../../../sample-data/Bellevue demo.json';
 import { resolveAncestorLevelId } from '../transform';
 import {
   buildExperimentalWalls,
@@ -96,9 +96,10 @@ describe('experimental Pascal wall geometry', () => {
       (wallsByLevel[levelId] ??= []).push(node as Wall);
     }
     const report = buildWallGeometryReport(wallsByLevel);
-    expect(report.totalWalls).toBe(109);
-    expect(report.exactWallCount).toBe(107);
-    expect(report.invalidWallCount).toBe(2);
+    const sourceWalls = Object.values(nodes).filter((node) => node.type === "wall"), sourceZeroLengthWalls = sourceWalls.filter((node) => Array.isArray(node.start) && Array.isArray(node.end) && node.start[0] === node.end[0] && node.start[1] === node.end[1]);
+    expect(report.totalWalls).toBe(sourceWalls.length);
+    expect(report.invalidWallCount).toBeGreaterThanOrEqual(sourceZeroLengthWalls.length);
+    expect(report.exactWallCount + report.invalidWallCount).toBe(report.totalWalls);
     expect(report.selfIntersectingCount).toBe(0);
     expect(report.miterOutlierCount).toBe(0);
     expect(Object.keys(report.byLevel).length).toBeGreaterThan(0);

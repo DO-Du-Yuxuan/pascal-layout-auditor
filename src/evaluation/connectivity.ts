@@ -135,7 +135,7 @@ export function buildDoorPortals(handoff: EvaluationHandoff, roomAnalysis = buil
   });
 }
 
-function roomAtStair(stair: EvaluationHandoff["stairs"][number], levelId: string, rooms: RoomRegion[]) {
+function roomAtStairFootprint(stair: EvaluationHandoff["stairs"][number], levelId: string, rooms: RoomRegion[]) {
   if (!stair.footprint?.length) return null;
   const close = (ring: Ring): Ring => ring.length && (ring[0]![0] !== ring[ring.length - 1]![0] || ring[0]![1] !== ring[ring.length - 1]![1]) ? [...ring, ring[0]!] : ring;
   const area = (ring: Ring) => Math.abs(ring.reduce((sum, point, index) => { const next = ring[(index + 1) % ring.length]!; return sum + point[0] * next[1] - next[0] * point[1]; }, 0) / 2), footprint = close(stair.footprint as Ring), footprintArea = area(footprint);
@@ -145,6 +145,15 @@ function roomAtStair(stair: EvaluationHandoff["stairs"][number], levelId: string
     catch { return { roomId: room.roomRegionId, area: 0 }; }
   }).sort((a, b) => b.area - a.area);
   return overlaps[0] && overlaps[0].area / footprintArea >= .5 && (!overlaps[1] || overlaps[1].area <= T.overlapAreaSquareMeters) ? overlaps[0].roomId : null;
+}
+
+function roomAtStairLanding(stair: EvaluationHandoff["stairs"][number], levelId: string, rooms: RoomRegion[], side: "from" | "to") {
+  const center = side === "from" ? stair.fromLandingCenter : stair.toLandingCenter, outward = side === "from" ? stair.fromLandingOutward : stair.toLandingOutward, width = stair.landingWidthMeters;
+  if (!center || !outward || !Number.isFinite(width) || width! <= T.lengthMeters) return roomAtStairFootprint(stair, levelId, rooms);
+  const relevant = rooms.filter((room) => room.levelId === levelId && room.usableForEvaluation), lateral: Point = [-outward[1], outward[0]], distances = [T.stairLandingSampleClearanceMeters, T.stairLandingSampleClearanceMeters + T.stairLandingSampleDepthMeters / 2, T.stairLandingSampleClearanceMeters + T.stairLandingSampleDepthMeters], samples = distances.flatMap((distance) => [-.25, 0, .25].map((fraction) => [center[0] + outward[0] * distance + lateral[0] * width! * fraction, center[1] + outward[1] * distance + lateral[1] * width! * fraction] as Point)), votes = new Map<string, number>();
+  samples.forEach((point) => { const matches = relevant.filter((room) => pointInRoom(point, room)); if (matches.length === 1) votes.set(matches[0]!.roomRegionId, (votes.get(matches[0]!.roomRegionId) ?? 0) + 1); });
+  const ranked = [...votes.entries()].sort((a, b) => b[1] - a[1]);
+  return ranked[0] && ranked[0][1] >= Math.ceil(samples.length / 2) && (!ranked[1] || ranked[0][1] > ranked[1][1]) ? ranked[0][0] : null;
 }
 
 function selectEntrance(handoff: EvaluationHandoff, portals: DoorPortal[]): EntranceSelection {
@@ -169,8 +178,8 @@ export function buildRoomConnectivityGraph(handoff: EvaluationHandoff, roomAnaly
   const stairConnections: StairConnection[] = handoff.stairs.map((stair) => {
     const diagnostics: PortalDiagnostic[] = [], validReferences = Boolean(stair.fromLevelId && stair.toLevelId && levelIds.has(stair.fromLevelId) && levelIds.has(stair.toLevelId));
     if (!validReferences) diagnostics.push({ code: "stair_connection_unresolved", message: `楼梯楼层引用无效：fromLevelId=${stair.fromLevelId ?? "null"}，toLevelId=${stair.toLevelId ?? "null"}` });
-    const fromRoomRegionId = validReferences ? roomAtStair(stair, stair.fromLevelId!, roomAnalysis.rooms) : null, toRoomRegionId = validReferences ? roomAtStair(stair, stair.toLevelId!, roomAnalysis.rooms) : null;
-    if (validReferences && (!fromRoomRegionId || !toRoomRegionId)) diagnostics.push({ code: "stair_landing_room_unresolved", message: "无法在楼梯上下层确定唯一落地区域" });
+    const fromRoomRegionId = validReferences ? roomAtStairLanding(stair, stair.fromLevelId!, roomAnalysis.rooms, "from") : null, toRoomRegionId = validReferences ? roomAtStairLanding(stair, stair.toLevelId!, roomAnalysis.rooms, "to") : null;
+    if (validReferences && (!fromRoomRegionId || !toRoomRegionId)) diagnostics.push({ code: "stair_landing_room_unresolved", message: `楼层引用有效，但无法在${!fromRoomRegionId && !toRoomRegionId ? "上下层" : !fromRoomRegionId ? "起始层" : "到达层"}楼梯口确定唯一 Room Region` });
     const usableForConnectivity = Boolean(validReferences && fromRoomRegionId && toRoomRegionId);
     return { stairId: stair.id, pascalSourceId: stair.rawPascalId, fromLevelId: stair.fromLevelId, toLevelId: stair.toLevelId, fromRoomRegionId, toRoomRegionId, confidence: usableForConnectivity ? "medium" : "low", diagnostics, usableForConnectivity };
   });

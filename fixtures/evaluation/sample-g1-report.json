@@ -26,9 +26,15 @@
     "doorPortalEndClearanceMeters": 0.02,
     "doorEntryDepthMeters": 0.45,
     "doorEntryMinimumClearRatio": 0.2,
-    "doorOperationMinimumAngleRadians": 1.0471975511965976,
+    "doorOperationMinimumAngleRadians": 1.5707963267948966,
     "doorCollisionAreaSquareMeters": 0.01,
-    "doorLeafThicknessMeters": 0.04
+    "doorLeafThicknessMeters": 0.04,
+    "basicPassageWidthMeters": 0.8,
+    "personRadiusMeters": 0.4,
+    "navigationGridMeters": 0.1,
+    "portalLandingSearchMeters": 0.75,
+    "largeFurnitureMinimumAreaSquareMeters": 1,
+    "smallObjectMaximumAreaSquareMeters": 0.35
   },
   "rules": [
     {

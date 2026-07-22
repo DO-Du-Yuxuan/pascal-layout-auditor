@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCurvedStairPlanGeometry, buildStraightStairPlanGeometry } from "./stairs";
+import { buildCurvedStairPlanGeometry, buildStraightStairPlanGeometry, stairLandingGeometry } from "./stairs";
 
 const base = { id: "stair", type: "stair", parentId: "level", position: [10, 0, 20], rotation: 0, stairType: "straight", children: ["a", "landing", "b"] };
 describe("non-spiral stair plan geometry", () => {
@@ -20,5 +20,12 @@ describe("non-spiral stair plan geometry", () => {
     expect(positive.footprintPath).not.toEqual(negative.footprintPath);
     expect(positive.upDirection.to.z).toBeGreaterThan(positive.upDirection.from.z);
     expect(negative.upDirection.to.z).toBeLessThan(negative.upDirection.from.z);
+  });
+  it("derives separate outward landing directions for a spiral stair", () => {
+    const stair = { id: "spiral", type: "stair", stairType: "spiral", position: [0, 0, 0], rotation: 0, width: 1, innerRadius: .4, sweepAngle: -Math.PI * 1.5, stepCount: 16 } as any, landing = stairLandingGeometry(stair, { spiral: stair })!;
+    expect(landing.width).toBe(1);
+    expect(Math.hypot(landing.fromOutward.x, landing.fromOutward.z)).toBeCloseTo(1);
+    expect(Math.hypot(landing.toOutward.x, landing.toOutward.z)).toBeCloseTo(1);
+    expect(landing.fromCenter).not.toEqual(landing.toCenter);
   });
 });

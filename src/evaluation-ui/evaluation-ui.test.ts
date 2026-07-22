@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import bellevueProject from "../../sample-data/9618b316-3eab-4fcf-9a21-0f7316479968.json";
 import bellevueDemoProject from "../../sample-data/Bellevue demo.json";
 import { evaluateFoundation, evaluateG1Foundation } from "../evaluation/evaluate";
 import { buildRoomRegionAnalysis } from "../evaluation/room-regions";
@@ -8,14 +7,18 @@ import { parseProject } from "../parser/parse";
 import { evaluationHighlightFor, evaluationHighlightRole, resolveEvaluationFocus } from "./focus";
 import { designerRulePresentation, evaluationIssueTargets, orderEvaluationRulesForDisplay } from "./presentation";
 
+const bellevueProject = structuredClone(bellevueDemoProject) as any;
+bellevueProject.nodes.stair_dyp7dqxtm1mg9fxb.fromLevelId = "level_fkoejbpxrc8pfko1";
+bellevueProject.nodes.stair_dyp7dqxtm1mg9fxb.toLevelId = "level_3xsbeo3c6y50zj52";
+
 describe("Bellevue evaluation UI adapter", () => {
   const parsed = parseProject(bellevueProject), report = evaluateG1Foundation(buildEvaluationHandoff(parsed)), nodes = parsed.nodes;
   const rule = (id: string) => report.rules.find((item) => item.ruleId === id)!;
 
-  it("offers two independently focusable zero-length walls with a visible fallback view", () => {
+  it("offers the current zero-length wall with a visible fallback view", () => {
     const presentation = designerRulePresentation(rule("G1-004"), nodes);
-    expect(presentation.targets).toHaveLength(2);
-    expect(presentation.targets.map((target) => target.label)).toEqual(["无效墙体 1 · Level 2", "无效墙体 2 · Level 2"]);
+    expect(presentation.targets).toHaveLength(1);
+    expect(presentation.targets.map((target) => target.label)).toEqual(["无效墙体 1 · Level 2"]);
     presentation.targets.forEach((target) => expect(resolveEvaluationFocus(nodes, target.primaryId)).toMatchObject({ renderable: true, levelId: "level_tf1ug5dswkkzfhqa", viewBox: { width: 2.4, height: 2.4 } }));
   });
 
@@ -26,7 +29,7 @@ describe("Bellevue evaluation UI adapter", () => {
   });
 
   it("distinguishes the primary window from its related host wall", () => {
-    const target = designerRulePresentation(rule("G1-013"), nodes).targets[0]!, highlight = evaluationHighlightFor("G1-013", target, 0);
+    const window = nodes.window_u6yp3z754ya6gqkq!, synthetic = { ...rule("G1-013"), status: "issue" as const, normalizedObjectIds: [window.id, window.wallId], diagnostics: [{ severity: "error" as const, code: "opening_outside_host_wall", message: "测试定位", normalizedObjectIds: [window.id, window.wallId] }] }, target = designerRulePresentation(synthetic, nodes).targets[0]!, highlight = evaluationHighlightFor("G1-013", target, 0);
     expect(evaluationHighlightRole(highlight, target.primaryId)).toBe("primary");
     expect(target.relatedIds).toEqual(["wall_twjrbha7gdx24q8c"]);
     expect(evaluationHighlightRole(highlight, target.relatedIds[0]!)).toBe("related");
@@ -37,25 +40,22 @@ describe("Bellevue evaluation UI adapter", () => {
   });
 
   it("indexes every currently renderable issue when the basic check completes", () => {
-    expect(evaluationIssueTargets(report.rules, nodes).map((target) => `${target.ruleId}:${target.primaryId}`)).toEqual([
-      "G1-004:wall_s036gfqzmc1miaps",
-      "G1-004:wall_2lndng4qf6ayungu",
-      "G1-005:stair_dyp7dqxtm1mg9fxb",
-      "G1-013:window_u6yp3z754ya6gqkq",
-    ]);
+    const targets = evaluationIssueTargets(report.rules, nodes).map((target) => `${target.ruleId}:${target.primaryId}`);
+    expect(targets).toEqual(expect.arrayContaining(["G1-004:wall_obbuari0p7ilw3lz", "G1-005:stair_dyp7dqxtm1mg9fxb"]));
+    expect(targets.filter((target) => target.startsWith("G1-023:item_"))).not.toHaveLength(0);
   });
 
   it("fails safely for missing render mappings and replaces old highlights", () => {
     expect(resolveEvaluationFocus(nodes, "missing-object")).toMatchObject({ renderable: false, viewBox: null });
-    const wallTarget = designerRulePresentation(rule("G1-004"), nodes).targets[0]!, windowTarget = designerRulePresentation(rule("G1-013"), nodes).targets[0]!;
+    const wallTarget = designerRulePresentation(rule("G1-004"), nodes).targets[0]!, window = nodes.window_u6yp3z754ya6gqkq!, synthetic = { ...rule("G1-013"), status: "issue" as const, normalizedObjectIds: [window.id, window.wallId], diagnostics: [{ severity: "error" as const, code: "opening_outside_host_wall", message: "测试定位", normalizedObjectIds: [window.id, window.wallId] }] }, windowTarget = designerRulePresentation(synthetic, nodes).targets[0]!;
     const oldHighlight = evaluationHighlightFor("G1-004", wallTarget, 0), nextHighlight = evaluationHighlightFor("G1-013", windowTarget, 0);
     expect(nextHighlight.primaryId).not.toBe(oldHighlight.primaryId);
     expect(nextHighlight.ruleId).toBe("G1-013");
   });
 
   it("offers an out-of-envelope furniture object as a canvas target", () => {
-    const object = parsed.nodes.item_010u26nmiwafik24!, synthetic = { ...rule("G1-004"), ruleId: "G1-023", ruleName: "家具与设备位于有效建筑范围", normalizedObjectIds: [object.id], pascalSourceIds: [object.id], status: "issue" as const, diagnostics: [{ severity: "error" as const, code: "item_outside_building_envelope", message: "越界", normalizedObjectIds: [object.id] }] };
-    expect(designerRulePresentation(synthetic, nodes).targets[0]).toMatchObject({ primaryId: object.id, levelName: "Level 2" });
+    const object = Object.values(parsed.nodes).find((node) => node.type === "item")!, synthetic = { ...rule("G1-004"), ruleId: "G1-023", ruleName: "家具与设备位于有效建筑范围", normalizedObjectIds: [object.id], pascalSourceIds: [object.id], status: "issue" as const, diagnostics: [{ severity: "error" as const, code: "item_outside_building_envelope", message: "越界", normalizedObjectIds: [object.id] }] };
+    expect(designerRulePresentation(synthetic, nodes).targets[0]).toMatchObject({ primaryId: object.id, levelName: "Level 1" });
   });
 });
 
@@ -71,12 +71,16 @@ describe("Bellevue Room Region UI adapter", () => {
     expect(designerRulePresentation(rule("G1-012"), nodes, analysis).targets).toHaveLength(0);
   });
 
-  it("indexes new issue targets without marking the passing name rule", () => {
+  it("indexes both confirmed issues and locatable unable-to-determine results", () => {
     const targets = evaluationIssueTargets(report.rules, nodes, analysis);
     expect(targets.filter((target) => target.ruleId === "G1-009")).toHaveLength(2);
     expect(targets.filter((target) => target.ruleId === "G1-012")).toHaveLength(0);
     expect(targets.some((target) => target.ruleId === "G1-019")).toBe(false);
-    expect(targets.some((target) => target.ruleId === "G3-001" || target.ruleId === "G3-005")).toBe(false);
+    expect(rule("G3-001")).toMatchObject({ status: "pass" });
+    expect(targets.filter((target) => target.ruleId === "G3-001")).toHaveLength(0);
+    expect(targets.filter((target) => target.ruleId === "G3-004")).toEqual([]);
+    expect(targets.filter((target) => target.ruleId === "G3-006")).toEqual([expect.objectContaining({ primaryId: "level_tf1ug5dswkkzfhqa-room-12", levelName: "Level 2", status: "unable_to_determine" })]);
+    expect(targets.some((target) => target.ruleId === "G3-005")).toBe(false);
   });
 
   it("focuses a synthetic G3 room issue through the shared Room Region adapter", () => {
@@ -87,12 +91,13 @@ describe("Bellevue Room Region UI adapter", () => {
     expect(resolveEvaluationFocus(nodes, target.primaryId, analysis)).toMatchObject({ renderable: true, levelId: room.levelId });
   });
 
-  it("shows issues first and only highlights confirmed G1-023 outside objects", () => {
+  it("shows issues first and highlights every confirmed G1-023 placement conflict", () => {
     const ordered = orderEvaluationRulesForDisplay(report.rules);
     expect(ordered.slice(0, ordered.filter((item) => item.status === "issue").length).every((item) => item.status === "issue")).toBe(true);
-    const furniture = designerRulePresentation(rule("G1-023"), nodes, analysis);
-    expect(furniture.targets).toHaveLength(6);
+    const placementRule = rule("G1-023"), furniture = designerRulePresentation(placementRule, nodes, analysis), confirmedPrimaryIds = [...new Set(placementRule.diagnostics.filter((item) => item.severity === "error" && ["item_outside_building_envelope", "item_penetrates_wall", "item_physical_collision"].includes(item.code)).map((item) => item.normalizedObjectIds[0]))];
+    expect(furniture.targets.map((target) => target.primaryId)).toEqual(confirmedPrimaryIds);
     expect(furniture.targets.every((target) => resolveEvaluationFocus(nodes, target.primaryId, analysis).renderable)).toBe(true);
+    expect(furniture.targets.find((target) => target.primaryId === "item_ht7u86ckuphquvci")?.relatedIds).toEqual(expect.arrayContaining(["wall_49gje9vehl4h6hf7", "item_7jbysauqz8k82rh0", "item_am8s25oxksk6s4kq"]));
   });
 
   it("counts one problem door once when it collides with several objects", () => {
@@ -103,9 +108,18 @@ describe("Bellevue Room Region UI adapter", () => {
     expect(presentation.targets).toEqual([expect.objectContaining({ primaryId: doorId, relatedIds })]);
   });
 
-  it("explains unresolved double doors without creating false red highlights", () => {
+  it("applies the flipped double-door direction without creating a false collision target", () => {
     const presentation = designerRulePresentation(rule("G3-007"), nodes, analysis);
-    expect(presentation.title).toContain("开启关系暂时无法核验");
+    expect(presentation.title).toBe("门均可打开到90°");
     expect(presentation.targets).toEqual([]);
+  });
+
+  it("focuses a blocked navigation Room and marks its furniture as the related object", () => {
+    const room = analysis.rooms.find((item) => item.levelId === "level_jwi4ovhyra2ayxa5" && item.usableForEvaluation)!, blocker = Object.values(nodes).find((node) => node.type === "item" && resolveEvaluationFocus(nodes, node.id).levelId === room.levelId)!;
+    const synthetic = { ...rule("G3-004"), status: "issue" as const, normalizedObjectIds: [room.roomRegionId], diagnostics: [{ severity: "error" as const, code: "large_furniture_blocks_navigation", message: "大型家具阻断路径", normalizedObjectIds: [room.roomRegionId, blocker.id], origin: "source_data" as const }] };
+    const presentation = designerRulePresentation(synthetic, nodes, analysis), target = presentation.targets[0]!;
+    expect(target).toMatchObject({ primaryId: room.roomRegionId, relatedIds: [blocker.id], levelId: room.levelId });
+    expect(resolveEvaluationFocus(nodes, target.primaryId, analysis)).toMatchObject({ renderable: true, levelId: room.levelId });
+    expect(evaluationHighlightRole(evaluationHighlightFor("G3-004", target, 0), blocker.id)).toBe("related");
   });
 });
