@@ -8,10 +8,12 @@ import { G1_GEOMETRY_TOLERANCES as T } from "./tolerances";
 export type NavigationObstacleRole = "fixed" | "large-movable" | "small" | "uncertain" | "excluded";
 export type NavigationObstacle = Obstacle & { role: NavigationObstacleRole; name: string | null; areaSquareMeters: number; reason: string };
 export type NavigationPortalNode = { doorId: string; sourcePoint: Point; fixedLanding: Point | null; furnishedLanding: Point | null; fixedComponentId: number | null; furnishedComponentId: number | null };
+export type NavigationPortalConnection = { fromDoorId: string; toDoorId: string; fixedConnected: boolean; furnishedConnected: boolean; fixedPath: Point[]; furnishedPath: Point[] };
 export type NavigationPath = { fromId: string; toId: string; points: Point[]; status: "connected" | "blocked" };
 export type RoomNavigableSpace = {
   roomRegionId: string; levelId: string; zoneIds: string[]; zoneNames: string[]; mainSpace: boolean;
   gridMeters: number; clearanceRadiusMeters: number; anchorPoint: Point | null; portalNodes: NavigationPortalNode[];
+  portalConnections: NavigationPortalConnection[];
   fixedFreeCells: Point[]; navigableFreeCells: Point[]; fixedComponentCount: number; furnishedComponentCount: number;
   fixedConnected: boolean; furnishedConnected: boolean; uncertainConnected: boolean;
   fixedObstacleIds: string[]; fixedBlockerIds: string[]; largeFurnitureBlockerIds: string[]; uncertainObjectIds: string[]; ignoredSmallObjectIds: string[];
@@ -43,6 +45,7 @@ function classifyObstacles(handoff: EvaluationHandoff): NavigationObstacle[] {
     let role: NavigationObstacleRole, reason: string;
     if (excludedPattern.test(text)) { role = "excluded"; reason = "明确车辆或室外对象"; }
     else if (!obstacle.usableForCollision || obstacle.classificationConfidence === "low") { role = "uncertain"; reason = "类别或几何置信度不足"; }
+    else if (obstacle.objectType === "column" && largePattern.test(name ?? "")) { role = "uncertain"; reason = "对象名称像家具，但源 category 将其标为 Column"; }
     else if (["wall", "column", "shaft", "fixed-cabinet"].includes(obstacle.objectType) || obstacle.objectType === "equipment" && fixedPattern.test(text) || obstacle.objectType === "furniture" && sanitaryPattern.test(text)) { role = "fixed"; reason = "固定构件、柜体、设备或洁具"; }
     else if (obstacle.objectType === "furniture" && (largePattern.test(text) || areaSquareMeters >= T.largeFurnitureMinimumAreaSquareMeters)) { role = "large-movable"; reason = "大型可移动家具"; }
     else if (smallPattern.test(text) || areaSquareMeters <= T.smallObjectMaximumAreaSquareMeters) { role = "small"; reason = "小型可移动对象，仅保留诊断"; }
@@ -80,10 +83,18 @@ export function buildRoomNavigationAnalysis(handoff: EvaluationHandoff): RoomNav
     const testWithout = (role: NavigationObstacleRole, obstacleId: string) => { const included = relevant.filter((obstacle) => obstacle.role === "fixed" || role === "large-movable" && obstacle.role === "large-movable").filter((obstacle) => obstacle.objectId !== obstacleId), grid = buildGrid(room, included), landings = sources.map((source) => nearestCell(grid, source.point)); return connected(landings, anchorCell(grid)); };
     const largeFurnitureBlockerIds = !furnishedConnected && fixedConnected ? large.filter((obstacle) => testWithout("large-movable", obstacle.objectId)).map((obstacle) => obstacle.objectId) : [], fixedBlockerIds = !fixedConnected ? fixed.filter((obstacle) => { const grid = buildGrid(room, fixed.filter((item) => item.objectId !== obstacle.objectId)), landings = sources.map((source) => nearestCell(grid, source.point)); return connected(landings, anchorCell(grid)); }).map((obstacle) => obstacle.objectId) : [], uncertainObjectIds = furnishedConnected && !uncertainConnected ? uncertain.map((obstacle) => obstacle.objectId) : [];
     const paths: NavigationPath[] = []; for (let index = 0; index < sources.length; index++) { const landing = furnishedLandings[index], source = sources[index]!; if (anchor && landing) { const points = path(furnishedGrid, landing, anchor); paths.push({ fromId: source.doorId, toId: "room-anchor", points: points.length ? points : [source.point!, anchor.point], status: points.length ? "connected" : "blocked" }); } else paths.push({ fromId: source.doorId, toId: "room-anchor", points: [source.point!, ...(anchor ? [anchor.point] : [])], status: "blocked" }); }
+    const portalConnections: NavigationPortalConnection[] = [];
+    for (let first = 0; first < sources.length; first++) for (let second = first + 1; second < sources.length; second++) {
+      const a = sources[first]!, b = sources[second]!, fixedA = fixedLandings[first] ?? null, fixedB = fixedLandings[second] ?? null, furnishedA = furnishedLandings[first] ?? null, furnishedB = furnishedLandings[second] ?? null,
+        fixedPairConnected = Boolean(fixedA && fixedB && fixedA.componentId === fixedB.componentId), furnishedPairConnected = Boolean(furnishedA && furnishedB && furnishedA.componentId === furnishedB.componentId),
+        fixedPath = fixedPairConnected ? path(fixedGrid, fixedA!, fixedB!) : [a.point!, b.point!], furnishedPath = furnishedPairConnected ? path(furnishedGrid, furnishedA!, furnishedB!) : [a.point!, b.point!];
+      portalConnections.push({ fromDoorId: a.doorId, toDoorId: b.doorId, fixedConnected: fixedPairConnected, furnishedConnected: furnishedPairConnected, fixedPath, furnishedPath });
+      paths.push({ fromId: a.doorId, toId: b.doorId, points: furnishedPath, status: furnishedPairConnected ? "connected" : "blocked" });
+    }
     const portalNodes = sources.map((source, index) => ({ doorId: source.doorId, sourcePoint: source.point!, fixedLanding: fixedLandings[index]?.point ?? null, furnishedLanding: furnishedLandings[index]?.point ?? null, fixedComponentId: fixedLandings[index]?.componentId ?? null, furnishedComponentId: furnishedLandings[index]?.componentId ?? null }));
     const usableForEvaluation = portals.length > 0 && fixedGrid.cells.length > 0;
     if (!portals.length) diagnostics.push(`${room.roomRegionId}: 没有可用于房内路径的可靠 Door Portal`);
-    rooms.push({ roomRegionId: room.roomRegionId, levelId: room.levelId, zoneIds, zoneNames, mainSpace: zoneNames.some((name) => mainPattern.test(name)), gridMeters: T.navigationGridMeters, clearanceRadiusMeters: T.personRadiusMeters, anchorPoint: anchor?.point ?? null, portalNodes, fixedFreeCells: fixedGrid.cells.map((cell) => cell.point), navigableFreeCells: furnishedGrid.cells.map((cell) => cell.point), fixedComponentCount: fixedGrid.components.length, furnishedComponentCount: furnishedGrid.components.length, fixedConnected, furnishedConnected, uncertainConnected, fixedObstacleIds: fixed.map((item) => item.objectId), fixedBlockerIds, largeFurnitureBlockerIds, uncertainObjectIds, ignoredSmallObjectIds: small.map((item) => item.objectId), paths, diagnostics: [...(!fixedGrid.cells.length ? ["room_free_space_empty"] : []), ...(!portals.length ? ["room_portal_unavailable"] : []), ...(uncertainObjectIds.length ? ["uncertain_objects_may_block_path"] : [])], usableForEvaluation });
+    rooms.push({ roomRegionId: room.roomRegionId, levelId: room.levelId, zoneIds, zoneNames, mainSpace: zoneNames.some((name) => mainPattern.test(name)), gridMeters: T.navigationGridMeters, clearanceRadiusMeters: T.personRadiusMeters, anchorPoint: anchor?.point ?? null, portalNodes, portalConnections, fixedFreeCells: fixedGrid.cells.map((cell) => cell.point), navigableFreeCells: furnishedGrid.cells.map((cell) => cell.point), fixedComponentCount: fixedGrid.components.length, furnishedComponentCount: furnishedGrid.components.length, fixedConnected, furnishedConnected, uncertainConnected, fixedObstacleIds: fixed.map((item) => item.objectId), fixedBlockerIds, largeFurnitureBlockerIds, uncertainObjectIds, ignoredSmallObjectIds: small.map((item) => item.objectId), paths, diagnostics: [...(!fixedGrid.cells.length ? ["room_free_space_empty"] : []), ...(!portals.length ? ["room_portal_unavailable"] : []), ...(uncertainObjectIds.length ? ["uncertain_objects_may_block_path"] : [])], usableForEvaluation });
   }
   return { graph, obstacles, rooms, diagnostics };
 }

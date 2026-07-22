@@ -13,7 +13,18 @@ const base = (options: any = {}) => ({ schemaVersion: "1.0", source: {}, units: 
 describe("Room navigable space and path attribution", () => {
   it("connects portals through an empty room and ignores furniture against a wall", () => {
     const empty = buildRoomNavigationAnalysis(base()).rooms[0]!;
-    expect(empty).toMatchObject({ fixedConnected: true, furnishedConnected: true, portalNodes: [expect.anything(), expect.anything()] });
+    expect(empty).toMatchObject({
+      gridMeters: .1,
+      clearanceRadiusMeters: .3,
+      fixedConnected: true,
+      furnishedConnected: true,
+      portalNodes: [expect.anything(), expect.anything()],
+      portalConnections: [expect.objectContaining({ fromDoorId: "DL", toDoorId: "DR", fixedConnected: true, furnishedConnected: true })],
+    });
+    expect(ruleG3003(base()).thresholds).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "basicPassageWidth", value: .6 }),
+      expect.objectContaining({ name: "personRadius", value: .3 }),
+    ]));
     const againstWall = base({ furniture: [item("bed", "Bed", "beds", 5, .55, 3, 1)] });
     expect(ruleG3003(againstWall).status).toBe("pass");
     expect(ruleG3004(againstWall).status).toBe("pass");
