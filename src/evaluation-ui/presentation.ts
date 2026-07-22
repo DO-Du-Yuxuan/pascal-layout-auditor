@@ -26,6 +26,8 @@ export type DesignerRulePresentation = {
 export type EvaluationIssueTarget = EvaluationFocusTarget & { ruleId: string; targetIndex: number };
 const statusPriority: Record<RuleResult["status"], number> = { issue: 0, unable_to_determine: 1, pass: 2, not_applicable: 3 };
 const furnitureSpecialistRule = (ruleId: string) => /^G3-0(?:1[4-9]|2[0-4])$/.test(ruleId);
+const fixtureSpecialistRule = (ruleId: string) => /^G3-0(?:2[5-9]|3[0-8])$/.test(ruleId);
+const fixtureItemRule = (ruleId: string) => ["G3-026", "G3-027", "G3-029", "G3-032", "G3-034", "G3-035", "G3-036", "G3-038"].includes(ruleId);
 export const orderEvaluationRulesForDisplay = (rules: RuleResult[]) => rules.map((rule, index) => ({ rule, index })).sort((a, b) => statusPriority[a.rule.status] - statusPriority[b.rule.status] || a.index - b.index).map((item) => item.rule);
 
 const measurement = (rule: RuleResult, name: string) => rule.measurements.find((item) => item.name === name)?.value;
@@ -41,16 +43,18 @@ export function evaluationFocusTargets(rule: RuleResult, nodes: Record<string, N
       : rule.ruleId === "G1-013" ? candidates.filter((node) => node.type === "window" || node.type === "door")
         : rule.ruleId === "G1-023" ? candidates.filter((node) => node.type === "item")
           : ["G3-002", "G3-007", "G3-008"].includes(rule.ruleId) ? candidates.filter((node) => node.type === "door")
+          : rule.ruleId === "G3-037" ? candidates.filter((node) => node.type === "door")
+          : fixtureItemRule(rule.ruleId) ? candidates.filter((node) => node.type === "item")
           : furnitureSpecialistRule(rule.ruleId) ? candidates.filter((node) => node.type === "item")
           : ["G1-007", "G1-009", "G1-019"].includes(rule.ruleId) ? candidates.filter((node) => node.type === "zone") : [];
   const nodeTargets = primary.map((node, index) => {
     const levelId = resolveAncestorLevelId(node.id, nodes).levelId ?? null, levelName = humanLevelName(levelId ?? undefined, nodes);
-    const typeLabel = rule.ruleId === "G1-004" ? `无效墙体 ${index + 1}` : rule.ruleId === "G1-023" ? `${node.name || "家具或设备"} ${index + 1}` : ["G1-007", "G1-009", "G1-019"].includes(rule.ruleId) ? `${node.name || "功能区"} ${index + 1}` : node.type === "stair" ? "楼梯" : node.type === "window" ? "窗户" : "门";
+    const typeLabel = rule.ruleId === "G1-004" ? `无效墙体 ${index + 1}` : rule.ruleId === "G1-023" ? `${node.name || "家具或设备"} ${index + 1}` : ["G1-007", "G1-009", "G1-019"].includes(rule.ruleId) ? `${node.name || "功能区"} ${index + 1}` : node.type === "item" ? `${node.name || "家具或设备"} ${index + 1}` : node.type === "stair" ? "楼梯" : node.type === "window" ? "窗户" : "门";
     const hostId = rule.ruleId === "G1-013" ? node.wallId ?? node.parentId : null;
     const relatedIds = rule.ruleId.startsWith("G3-") || rule.ruleId === "G1-023" ? rule.diagnostics.filter((diagnostic) => diagnostic.normalizedObjectIds[0] === node.id).flatMap((diagnostic) => diagnostic.normalizedObjectIds.filter((id) => id !== node.id && nodes[id])).filter((id, index, all) => all.indexOf(id) === index) : hostId && nodes[hostId] ? [hostId] : [];
     return { primaryId: node.id, relatedIds, label: `${typeLabel} · ${levelName}`, levelId, levelName, status: rule.status };
   });
-  const roomTargets = ["G1-012", "G1-019", "G3-001", "G3-003", "G3-004", "G3-005", "G3-006", "G3-017", "G3-019", "G3-021", "G3-024"].includes(rule.ruleId) ? (roomAnalysis?.rooms ?? []).filter((room) => focusIds.includes(room.roomRegionId)).map((room, index) => { const navigationRule = ["G3-003", "G3-004", "G3-006", "G3-017", "G3-019", "G3-021", "G3-024"].includes(rule.ruleId), relatedIds = navigationRule ? rule.diagnostics.filter((diagnostic) => diagnostic.normalizedObjectIds.includes(room.roomRegionId)).flatMap((diagnostic) => diagnostic.normalizedObjectIds.filter((id) => id !== room.roomRegionId && nodes[id])).filter((id, position, all) => all.indexOf(id) === position) : rule.ruleId === "G3-001" && rule.status === "unable_to_determine" ? [] : room.boundaryWallIds, zoneNames = (roomAnalysis?.roomToZoneIds[room.roomRegionId] ?? []).map((id) => nodes[id]?.name?.trim()).filter((value): value is string => Boolean(value)), roomName = zoneNames.join(" / ") || `${rule.ruleId === "G3-001" ? "跨层待核验空间" : rule.ruleId === "G3-005" ? "无入口空间" : navigationRule ? rule.status === "unable_to_determine" ? "待核验空间" : "通行受阻空间" : "异常空间"} ${index + 1}`; return { primaryId: room.roomRegionId, relatedIds, label: `${roomName} · ${humanLevelName(room.levelId, nodes)}`, levelId: room.levelId, levelName: humanLevelName(room.levelId, nodes), status: rule.status }; }) : [];
+  const roomTargets = ["G1-012", "G1-019", "G3-001", "G3-003", "G3-004", "G3-005", "G3-006", "G3-017", "G3-019", "G3-021", "G3-024", "G3-025", "G3-028", "G3-030", "G3-031", "G3-033"].includes(rule.ruleId) ? (roomAnalysis?.rooms ?? []).filter((room) => focusIds.includes(room.roomRegionId)).map((room, index) => { const navigationRule = ["G3-003", "G3-004", "G3-006", "G3-017", "G3-019", "G3-021", "G3-024", "G3-025", "G3-028", "G3-030", "G3-031", "G3-033"].includes(rule.ruleId), relatedIds = navigationRule ? rule.diagnostics.filter((diagnostic) => diagnostic.normalizedObjectIds.includes(room.roomRegionId)).flatMap((diagnostic) => diagnostic.normalizedObjectIds.filter((id) => id !== room.roomRegionId && nodes[id])).filter((id, position, all) => all.indexOf(id) === position) : rule.ruleId === "G3-001" && rule.status === "unable_to_determine" ? [] : room.boundaryWallIds, zoneNames = (roomAnalysis?.roomToZoneIds[room.roomRegionId] ?? []).map((id) => nodes[id]?.name?.trim()).filter((value): value is string => Boolean(value)), roomName = zoneNames.join(" / ") || `${rule.ruleId === "G3-001" ? "跨层待核验空间" : rule.ruleId === "G3-005" ? "无入口空间" : navigationRule ? rule.status === "unable_to_determine" ? "待核验空间" : "通行受阻空间" : "异常空间"} ${index + 1}`; return { primaryId: room.roomRegionId, relatedIds, label: `${roomName} · ${humanLevelName(room.levelId, nodes)}`, levelId: room.levelId, levelName: humanLevelName(room.levelId, nodes), status: rule.status }; }) : [];
   return [...nodeTargets, ...roomTargets];
 }
 
@@ -150,6 +154,26 @@ export function designerRulePresentation(rule: RuleResult, nodes: Record<string,
     };
     const current = copy[rule.ruleId]!;
     return { title: rule.status === "issue" ? current.issue : rule.status === "unable_to_determine" ? current.unable : rule.ruleName, description: rule.summary, rationale: current.rationale, recommendation: rule.status === "pass" || rule.status === "not_applicable" ? "无需处理。" : current.recommendation, supplemental: rule.status === "unable_to_determine" ? "黄色标注表示缺少判断依据，不代表已经发现设计问题。" : undefined, problemCountLabel: rule.status === "issue" || rule.status === "unable_to_determine" ? String(count) : "0", targets };
+  }
+  if (fixtureSpecialistRule(rule.ruleId)) {
+    const copy: Record<string, { issue: string; unable: string; rationale: string; recommendation: string }> = {
+      "G3-025": { issue: "厨房核心设备之间无法连续使用", unable: "厨房基本操作关系暂时无法完整核验", rationale: "水槽、灶具和冰箱需要处在同一厨房或可靠相连区域，并能从入口到达；本轮不评价工作三角效率。", recommendation: "核对缺失设备的category、functionTags和所在Room，或处理G3-026中的接近问题。" },
+      "G3-026": { issue: "厨房核心设备前没有可用站立位置", unable: "部分厨房设备的接近空间待核验", rationale: "系统沿设备自身红线方向检查600毫米基本站立区，并确认该区域可从厨房入口到达。", recommendation: "移动红色设备前方的橙色对象，或检查设备位置和朝向。" },
+      "G3-027": { issue: "水槽或灶具附近缺少基本操作台面", unable: "厨房台面语义暂时不完整", rationale: "只有明确标记为Counter、Cabinet或Island的实体才作为台面依据，不根据空白区域猜测。", recommendation: "核对台面对象类别，或在水槽、灶具附近补充可识别台面。" },
+      "G3-028": { issue: "橱柜或岛台之间无法基本通行", unable: "厨房对向操作区暂时无法核验", rationale: "本轮只要求保留600毫米基本连续通行空间，更舒适的厨房间距留给S1。", recommendation: "调整橱柜、岛台或半岛位置，恢复基本通行。" },
+      "G3-029": { issue: "厨房设备门无法基本使用", unable: "厨房设备门的开启情况无法判断", rationale: "JSON没有设备门扇宽度、铰链和开向时，系统不会用冰箱或烤箱的整体矩形冒充门扇。", recommendation: "补充设备门扇尺寸、铰链侧、开向和开启角度。" },
+      "G3-030": { issue: "厨房入口被设备或岛台挡住", unable: "厨房入口暂时无法完整核验", rationale: "厨房入口需要连接到房内基本自由空间；基础通行规则已报告的同一问题不会重复生成卡片。", recommendation: "检查厨房Door Portal、入口落点及附近高柜、冰箱或岛台。" },
+      "G3-031": { issue: "厨房核心操作位成为唯一穿行通道", unable: "厨房唯一通道关系暂时无法核验", rationale: "只有其他主要空间的唯一拓扑路径明确穿过水槽或灶具前操作区时才判问题；开放式客餐厨不会自动失败。", recommendation: "调整空间连接或核心设备位置，避免日常穿行经过操作位。" },
+      "G3-032": { issue: "厨房高柜或设备形成完全死锁", unable: "设备与高柜的开启死角无法排除", rationale: "实体重叠可以直接确认；没有门扇开向时，只能标记待核验，不能猜测设备如何开启。", recommendation: "检查红色设备及橙色柜体，或补充设备门和高柜门的开启几何。" },
+      "G3-033": { issue: "卫生间无法正常进入或退出", unable: "卫生间入口暂时无法核验", rationale: "进入后需要存在基本站立、关门和退出空间；同一门口根因只保留一条主要问题。", recommendation: "调整门口洁具、柜体或门开向，恢复进入和退出空间。" },
+      "G3-034": { issue: "坐便器前方无法正常坐下和起身", unable: "部分坐便器使用区待核验", rationale: "这里只判断坐便器前方是否有600毫米基本使用区并能从入口到达，不执行G2规范净空。", recommendation: "移动前方洗手台、浴缸、隔断或其他阻挡对象。" },
+      "G3-035": { issue: "洗手盆前没有可用站立位置", unable: "部分洗手盆使用区待核验", rationale: "洗手盆前需要基本站立位置并可从卫生间入口到达。", recommendation: "调整洗手盆或前方洁具、门扇和隔断。" },
+      "G3-036": { issue: "淋浴或浴缸入口被挡住", unable: "部分淋浴或浴缸入口待核验", rationale: "缺少淋浴门数据时只检查几何入口，不猜测门型或开向。", recommendation: "移动入口前的坐便器、洗手台或其他阻挡对象。" },
+      "G3-037": { issue: "卫生间门与洁具形成被困风险", unable: "部分卫生间平开门的被困风险待核验", rationale: "只有门扇被洁具明确卡住且必要使用区也不可用时才判问题；推拉门不套用平开门扫掠。", recommendation: "调整卫生间门开向、铰链侧或洁具位置。" },
+      "G3-038": { issue: "卫生设备相互占满必要使用位置", unable: "卫生设备功能冲突待核验", rationale: "使用区可以部分重叠并顺序使用；只有相互完全占用、导致至少一个设备无法使用才判问题。", recommendation: "调整冲突洁具的位置，恢复至少一个必要使用区。" },
+    };
+    const current = copy[rule.ruleId]!;
+    return { title: rule.status === "issue" ? current.issue : rule.status === "unable_to_determine" ? current.unable : rule.ruleName, description: rule.summary, rationale: current.rationale, recommendation: rule.status === "pass" || rule.status === "not_applicable" ? "无需处理。" : current.recommendation, supplemental: rule.status === "unable_to_determine" ? "黄色标注表示数据不足，不代表已经发现设计错误。" : undefined, problemCountLabel: rule.status === "issue" || rule.status === "unable_to_determine" ? String(count || Number(measurement(rule, "missingKitchenCoreCount") ?? 0)) : "0", targets };
   }
   return {
     title: rule.ruleName,

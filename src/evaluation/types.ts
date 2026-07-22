@@ -93,6 +93,9 @@ export type GeometryTolerances = {
   bedAccessDepthMeters: number;
   seatingAccessDepthMeters: number;
   diningChairPulloutDepthMeters: number;
+  fixtureStandingDepthMeters: number;
+  bathEntryDepthMeters: number;
+  kitchenCounterRelationMeters: number;
   physicalCollisionAreaSquareMeters: number;
   physicalCollisionVerticalMeters: number;
   stairLandingSampleClearanceMeters: number;

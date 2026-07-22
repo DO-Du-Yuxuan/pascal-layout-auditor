@@ -1,7 +1,8 @@
 import polygonClipping from "polygon-clipping";
 import type { EvaluationHandoff } from "../parser/evaluation-handoff";
 import { rectangularFootprint, polygonArea, type Ring } from "./envelope";
-import { buildRoomNavigationAnalysis, type RoomNavigationAnalysis } from "./navigation";
+import type { RoomNavigationAnalysis } from "./navigation";
+import { navigationAnalysis } from "./g3-navigation-rules";
 import { G1_GEOMETRY_TOLERANCES as T } from "./tolerances";
 
 type Item = EvaluationHandoff["furniture"][number] | EvaluationHandoff["equipment"][number] | EvaluationHandoff["columns"][number];
@@ -72,7 +73,7 @@ const orientedRectangle = (item: Item, centerLocalX: number, centerLocalZ: numbe
   return [[-width / 2, -depth / 2], [width / 2, -depth / 2], [width / 2, depth / 2], [-width / 2, depth / 2]].map(([dx, dz]) => [x + (centerLocalX + dx) * c + (centerLocalZ + dz) * s, z - (centerLocalX + dx) * s + (centerLocalZ + dz) * c]);
 };
 export function buildFurnitureUseAnalysis(handoff: EvaluationHandoff): FurnitureUseAnalysis {
-  const navigation = buildRoomNavigationAnalysis(handoff), rooms = navigation.graph.roomAnalysis.rooms.filter((room) => room.usableForEvaluation), candidates: Item[] = [...handoff.furniture, ...handoff.equipment, ...handoff.columns];
+  const navigation = navigationAnalysis(handoff), rooms = navigation.graph.roomAnalysis.rooms.filter((room) => room.usableForEvaluation), candidates: Item[] = [...handoff.furniture, ...handoff.equipment, ...handoff.columns];
   const items: FurnitureSemanticItem[] = candidates.map((item) => {
     const footprint = rectangularFootprint(item), classified = classify(item), footprintArea = footprint ? polygonArea(footprint) : 0;
     const matches = footprint ? rooms.filter((room) => room.levelId === item.levelId).map((room) => ({ room, area: room.polygons.reduce((sum, polygon) => sum + intersectionArea(footprint, polygon), 0) })).sort((a, b) => b.area - a.area) : [];

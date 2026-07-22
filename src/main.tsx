@@ -42,6 +42,8 @@ import { navigationAnalysis } from "./evaluation/g3-navigation-rules";
 import type { RoomNavigationAnalysis } from "./evaluation/navigation";
 import { furnitureUseAnalysis } from "./evaluation/g3-furniture-rules";
 import type { FurnitureUseAnalysis } from "./evaluation/furniture-use";
+import { fixtureUseAnalysis } from "./evaluation/g3-fixture-rules";
+import type { FixtureUseAnalysis } from "./evaluation/fixture-use";
 
 type Visibility = {
   images: boolean;
@@ -108,6 +110,8 @@ function App() {
     [showNavigableSpace, setShowNavigableSpace] = useState(false),
     [furnitureUseZones, setFurnitureUseZones] = useState<FurnitureUseAnalysis | null>(null),
     [showFurnitureUseZones, setShowFurnitureUseZones] = useState(false),
+    [fixtureUseZones, setFixtureUseZones] = useState<FixtureUseAnalysis | null>(null),
+    [showFixtureUseZones, setShowFixtureUseZones] = useState(false),
     [evaluationError, setEvaluationError] = useState<string | null>(null),
     [evaluationHighlights, setEvaluationHighlights] = useState<EvaluationHighlight[]>([]),
     [activeEvaluationHighlight, setActiveEvaluationHighlight] = useState<EvaluationHighlight | null>(null),
@@ -140,6 +144,8 @@ function App() {
       setRoomNavigationAnalysis(null);
       setShowNavigableSpace(false);
       setFurnitureUseZones(null);
+      setFixtureUseZones(null);
+      setShowFixtureUseZones(false);
       setShowFurnitureUseZones(false);
       setEvaluationError(null);
       setEvaluationHighlights([]);
@@ -174,6 +180,8 @@ function App() {
       setRoomNavigationAnalysis(null);
       setShowNavigableSpace(false);
       setFurnitureUseZones(null);
+      setFixtureUseZones(null);
+      setShowFixtureUseZones(false);
       setShowFurnitureUseZones(false);
       setEvaluationError(null);
       setEvaluationHighlights([]);
@@ -232,7 +240,7 @@ function App() {
   const runFoundationEvaluation = () => {
     if (!data) return;
     try {
-      const handoff = buildEvaluationHandoff(data), analysis = buildRoomRegionAnalysis(handoff), graph = buildRoomConnectivityGraph(handoff, analysis), operations = buildDoorOperations(handoff), report = evaluateFoundation(handoff), navigation = navigationAnalysis(handoff), furnitureUses = furnitureUseAnalysis(handoff);
+      const handoff = buildEvaluationHandoff(data), analysis = buildRoomRegionAnalysis(handoff), graph = buildRoomConnectivityGraph(handoff, analysis), operations = buildDoorOperations(handoff), report = evaluateFoundation(handoff), navigation = navigationAnalysis(handoff), furnitureUses = furnitureUseAnalysis(handoff), fixtureUses = fixtureUseAnalysis(handoff);
       setEvaluationReport(report);
       setBuildingEnvelopes(buildBuildingEnvelopes(handoff));
       setRoomRegionAnalysis(analysis);
@@ -240,6 +248,7 @@ function App() {
       setDoorOperations(operations);
       setRoomNavigationAnalysis(navigation);
       setFurnitureUseZones(furnitureUses);
+      setFixtureUseZones(fixtureUses);
       setEvaluationHighlights(evaluationIssueTargets(report.rules, nodes, analysis).map((target) => evaluationHighlightFor(target.ruleId, target, target.targetIndex)));
       setActiveEvaluationHighlight(null);
       setEvaluationError(null);
@@ -341,6 +350,7 @@ function App() {
               <label><input type="checkbox" checked={showDoorOperationDebug} disabled={!doorOperations.length} onChange={() => setShowDoorOperationDebug((shown) => !shown)} />显示门操作区域</label>
               <label><input type="checkbox" checked={showNavigableSpace} disabled={!roomNavigationAnalysis} onChange={() => setShowNavigableSpace((shown) => !shown)} />显示可通行空间</label>
               <label><input type="checkbox" checked={showFurnitureUseZones} disabled={!furnitureUseZones} onChange={() => setShowFurnitureUseZones((shown) => !shown)} />显示家具使用区</label>
+              <label><input type="checkbox" checked={showFixtureUseZones} disabled={!fixtureUseZones} onChange={() => setShowFixtureUseZones((shown) => !shown)} />显示厨卫使用区</label>
             </div>
           </section>
           <Inspector
@@ -392,6 +402,8 @@ function App() {
                 showNavigableSpace={showNavigableSpace}
                 furnitureUseAnalysis={furnitureUseZones}
                 showFurnitureUseZones={showFurnitureUseZones}
+                fixtureUseAnalysis={fixtureUseZones}
+                showFixtureUseZones={showFixtureUseZones}
                 measurementMode={measurementMode}
                 measurementUnit={measurementUnit}
                 manualMeasurements={manualMeasurements.filter((item) => item.levelId === (canvas.levelId || levels[0]?.id || ""))}
@@ -434,6 +446,8 @@ function CanvasPanel({
   showNavigableSpace,
   furnitureUseAnalysis,
   showFurnitureUseZones,
+  fixtureUseAnalysis,
+  showFixtureUseZones,
   onSelect,
   onClearEvaluationHighlight,
   onActivateEvaluationHighlight,
@@ -468,6 +482,8 @@ function CanvasPanel({
   showNavigableSpace: boolean;
   furnitureUseAnalysis: FurnitureUseAnalysis | null;
   showFurnitureUseZones: boolean;
+  fixtureUseAnalysis: FixtureUseAnalysis | null;
+  showFixtureUseZones: boolean;
   onSelect: (id: string | null) => void;
   onClearEvaluationHighlight: () => void;
   onActivateEvaluationHighlight: (highlight: EvaluationHighlight) => void;
@@ -562,6 +578,8 @@ function CanvasPanel({
         showNavigableSpace={showNavigableSpace}
         furnitureUseAnalysis={furnitureUseAnalysis}
         showFurnitureUseZones={showFurnitureUseZones}
+        fixtureUseAnalysis={fixtureUseAnalysis}
+        showFixtureUseZones={showFixtureUseZones}
         onSelect={onSelect}
         onClearEvaluationHighlight={onClearEvaluationHighlight}
         onActivateEvaluationHighlight={onActivateEvaluationHighlight}
@@ -649,6 +667,8 @@ function Plan({
   showNavigableSpace,
   furnitureUseAnalysis,
   showFurnitureUseZones,
+  fixtureUseAnalysis,
+  showFixtureUseZones,
   onSelect,
   onClearEvaluationHighlight,
   onActivateEvaluationHighlight,
@@ -682,6 +702,8 @@ function Plan({
   showNavigableSpace: boolean;
   furnitureUseAnalysis: FurnitureUseAnalysis | null;
   showFurnitureUseZones: boolean;
+  fixtureUseAnalysis: FixtureUseAnalysis | null;
+  showFixtureUseZones: boolean;
   onSelect: (id: string | null) => void;
   onClearEvaluationHighlight: () => void;
   onActivateEvaluationHighlight: (highlight: EvaluationHighlight) => void;
@@ -880,6 +902,7 @@ function Plan({
           {measurementMode !== "off" && measurementHover && <SnapIndicator snap={measurementHover} active={Boolean(measurementStart)} />}
           </g>
           {furnitureUseAnalysis && (showFurnitureUseZones || Boolean(activeEvaluationHighlight && /^G3-0(?:1[4-9]|2[0-4])$/.test(activeEvaluationHighlight.ruleId))) && <FurnitureUseZoneOverlay analysis={furnitureUseAnalysis} levelId={levelId} activeHighlight={activeEvaluationHighlight} showDebug={showFurnitureUseZones} />}
+          {fixtureUseAnalysis && (showFixtureUseZones || Boolean(activeEvaluationHighlight && /^G3-0(?:2[5-9]|3[0-8])$/.test(activeEvaluationHighlight.ruleId))) && <FixtureUseZoneOverlay analysis={fixtureUseAnalysis} levelId={levelId} activeHighlight={activeEvaluationHighlight} showDebug={showFixtureUseZones} />}
           {highlightsOnLevel.length > 0 && <EvaluationHighlightOverlay highlights={highlightsOnLevel} activeHighlight={activeEvaluationHighlight} nodes={nodes} exactWalls={exactWalls} onActivate={onActivateEvaluationHighlight} />}
           {(showDoorOperationDebug || activeEvaluationHighlight?.ruleId === "G3-002" || activeEvaluationHighlight?.ruleId === "G3-007" || activeEvaluationHighlight?.ruleId === "G3-008") && <DoorOperationOverlay operations={doorOperations} levelId={levelId} activeHighlight={activeEvaluationHighlight} showDebug={showDoorOperationDebug} />}
           {navigationAnalysis && (showNavigableSpace || Boolean(activeEvaluationHighlight && ["G3-003", "G3-004", "G3-006"].includes(activeEvaluationHighlight.ruleId))) && <NavigableSpaceOverlay analysis={navigationAnalysis} levelId={levelId} activeHighlight={activeEvaluationHighlight} showDebug={showNavigableSpace} />}
@@ -896,6 +919,7 @@ function Plan({
       {showDoorOperationDebug && <div className="door-operation-legend"><span><i className="swing" />门扇扫掠</span><span><i className="entry" />入口检测区域</span></div>}
       {showNavigableSpace && navigationAnalysis && <div className="navigable-space-legend"><span><i className="free" />可通行区域</span><span><i className="occupied" />障碍占用</span><span><i className="path" />已连接路径</span><span><i className="interruption" />路径中断</span><span><i className="blocker" />阻挡对象</span></div>}
       {showFurnitureUseZones && furnitureUseAnalysis && <div className="furniture-use-legend"><span><i className="usable" />基本使用区</span><span><i className="blocked" />不可用使用区</span><span><i className="candidate" />方向待确认</span></div>}
+      {showFixtureUseZones && fixtureUseAnalysis && <div className="fixture-use-legend"><span><i className="usable" />厨卫基本使用区</span><span><i className="blocked" />使用区被阻挡</span><span><i className="candidate" />数据待确认</span></div>}
       <div className="legend">{formatPanelLength(viewBox.width, measurementUnit)} × {formatPanelLength(viewBox.height, measurementUnit)}</div>
     </div>
   );
@@ -946,6 +970,13 @@ function FurnitureUseZoneOverlay({ analysis, levelId, activeHighlight, showDebug
       const assessment = assessments.get(zone.useZoneId), active = zone.ownerObjectId === activeOwnerId, unresolved = !zone.usableForEvaluation, usable = assessment?.usable === true, color = unresolved ? "#d8a449" : usable ? "#36a269" : "#e23d35";
       return <polygon key={zone.useZoneId} data-furniture-use-zone={zone.useZoneId} points={zone.polygon.map(([x, z]) => `${x},${z}`).join(" ")} fill={color} fillOpacity={active ? ".24" : ".12"} stroke={color} strokeDasharray={unresolved ? "6 4" : undefined} strokeWidth={active ? "2.5" : "1.4"} vectorEffect="non-scaling-stroke" />;
     })}
+  </g>;
+}
+function FixtureUseZoneOverlay({ analysis, levelId, activeHighlight, showDebug }: { analysis: FixtureUseAnalysis; levelId: string; activeHighlight: EvaluationHighlight | null; showDebug: boolean }) {
+  const activeOwnerId = activeHighlight && /^G3-0(?:2[5-9]|3[0-8])$/.test(activeHighlight.ruleId) ? activeHighlight.primaryId : null;
+  const assessments = new Map(analysis.assessments.map((assessment) => [assessment.zone.useZoneId, assessment]));
+  return <g className="fixture-use-zone-overlay" pointerEvents="none">
+    {analysis.useZones.filter((zone) => zone.levelId === levelId && (showDebug || zone.ownerObjectId === activeOwnerId)).map((zone) => { const assessment = assessments.get(zone.useZoneId), active = zone.ownerObjectId === activeOwnerId, unresolved = !zone.usableForEvaluation, usable = assessment?.usable === true, color = unresolved ? "#d8a449" : usable ? "#36a269" : "#e23d35"; return <polygon key={zone.useZoneId} data-fixture-use-zone={zone.useZoneId} points={zone.polygon.map(([x,z]) => `${x},${z}`).join(" ")} fill={color} fillOpacity={active ? ".26" : ".13"} stroke={color} strokeDasharray={unresolved ? "6 4" : undefined} strokeWidth={active ? "2.5" : "1.4"} vectorEffect="non-scaling-stroke" />; })}
   </g>;
 }
 function BuildingEnvelopeOverlay({ envelope }: { envelope: BuildingEnvelope }) {

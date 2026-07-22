@@ -136,4 +136,21 @@ describe("Bellevue Room Region UI adapter", () => {
     expect(seating.title).toBe("客厅主要坐具能够正常使用");
     expect(seating.targets).toEqual([]);
   });
+
+  it("presents kitchen and bathroom checks with designer wording and canvas targets", () => {
+    const operationRelation = designerRulePresentation(rule("G3-025"), nodes, analysis);
+    expect(operationRelation.title).toBe("厨房基本操作关系暂时无法完整核验");
+    expect(operationRelation.targets).toHaveLength(2);
+    expect(operationRelation.targets.every((target) => target.primaryId.includes("-room-"))).toBe(true);
+
+    const stove = designerRulePresentation(rule("G3-026"), nodes, analysis);
+    expect(stove.title).toBe("厨房核心设备前没有可用站立位置");
+    expect(stove.targets).toEqual([expect.objectContaining({ primaryId: "item_y57pu4i6rmcz8y1p", levelName: "Level 1" })]);
+    expect(stove.targets[0]?.label).toContain("Stove");
+
+    const applianceDoor = designerRulePresentation(rule("G3-029"), nodes, analysis);
+    expect(applianceDoor.title).toBe("厨房设备门的开启情况无法判断");
+    expect(applianceDoor.targets).toEqual([expect.objectContaining({ primaryId: "item_an6vix3f4h6hd5hd", status: "unable_to_determine" })]);
+    expect(applianceDoor.rationale).toContain("不会用冰箱或烤箱的整体矩形冒充门扇");
+  });
 });
