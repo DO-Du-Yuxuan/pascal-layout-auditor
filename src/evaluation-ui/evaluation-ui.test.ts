@@ -122,4 +122,18 @@ describe("Bellevue Room Region UI adapter", () => {
     expect(resolveEvaluationFocus(nodes, target.primaryId, analysis)).toMatchObject({ renderable: true, levelId: room.levelId });
     expect(evaluationHighlightRole(evaluationHighlightFor("G3-004", target, 0), blocker.id)).toBe("related");
   });
+
+  it("presents specialist furniture findings with human labels and item focus targets", () => {
+    const bedPlacement = designerRulePresentation(rule("G3-014"), nodes, analysis);
+    expect(bedPlacement.title).toBe("床没有完整放在卧室内");
+    expect(bedPlacement.targets.map((target) => target.primaryId)).toEqual(expect.arrayContaining(["item_0aahggnuvs15c6lx", "item_qmhod8evoai6fg1z"]));
+    expect(bedPlacement.targets.every((target) => target.levelId)).toBe(true);
+
+    const wardrobe = designerRulePresentation(rule("G3-018"), nodes, analysis);
+    expect(wardrobe.title).toBe("衣柜能够正常开启和取物");
+    expect(wardrobe.targets).toEqual([]);
+    const seating = designerRulePresentation(rule("G3-020"), nodes, analysis);
+    expect(seating.title).toBe("客厅主要坐具能够正常使用");
+    expect(seating.targets).toEqual([]);
+  });
 });

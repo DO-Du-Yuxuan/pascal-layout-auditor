@@ -40,6 +40,8 @@ import { buildRoomConnectivityGraph, reachableNodeIds, RoomConnectivityGraph } f
 import { buildDoorOperations, type DoorOperation } from "./evaluation/door-operations";
 import { navigationAnalysis } from "./evaluation/g3-navigation-rules";
 import type { RoomNavigationAnalysis } from "./evaluation/navigation";
+import { furnitureUseAnalysis } from "./evaluation/g3-furniture-rules";
+import type { FurnitureUseAnalysis } from "./evaluation/furniture-use";
 
 type Visibility = {
   images: boolean;
@@ -104,6 +106,8 @@ function App() {
     [showDoorOperationDebug, setShowDoorOperationDebug] = useState(false),
     [roomNavigationAnalysis, setRoomNavigationAnalysis] = useState<RoomNavigationAnalysis | null>(null),
     [showNavigableSpace, setShowNavigableSpace] = useState(false),
+    [furnitureUseZones, setFurnitureUseZones] = useState<FurnitureUseAnalysis | null>(null),
+    [showFurnitureUseZones, setShowFurnitureUseZones] = useState(false),
     [evaluationError, setEvaluationError] = useState<string | null>(null),
     [evaluationHighlights, setEvaluationHighlights] = useState<EvaluationHighlight[]>([]),
     [activeEvaluationHighlight, setActiveEvaluationHighlight] = useState<EvaluationHighlight | null>(null),
@@ -135,6 +139,8 @@ function App() {
       setShowDoorOperationDebug(false);
       setRoomNavigationAnalysis(null);
       setShowNavigableSpace(false);
+      setFurnitureUseZones(null);
+      setShowFurnitureUseZones(false);
       setEvaluationError(null);
       setEvaluationHighlights([]);
       setActiveEvaluationHighlight(null);
@@ -167,6 +173,8 @@ function App() {
       setShowDoorOperationDebug(false);
       setRoomNavigationAnalysis(null);
       setShowNavigableSpace(false);
+      setFurnitureUseZones(null);
+      setShowFurnitureUseZones(false);
       setEvaluationError(null);
       setEvaluationHighlights([]);
       setActiveEvaluationHighlight(null);
@@ -224,13 +232,14 @@ function App() {
   const runFoundationEvaluation = () => {
     if (!data) return;
     try {
-      const handoff = buildEvaluationHandoff(data), analysis = buildRoomRegionAnalysis(handoff), graph = buildRoomConnectivityGraph(handoff, analysis), operations = buildDoorOperations(handoff), report = evaluateFoundation(handoff), navigation = navigationAnalysis(handoff);
+      const handoff = buildEvaluationHandoff(data), analysis = buildRoomRegionAnalysis(handoff), graph = buildRoomConnectivityGraph(handoff, analysis), operations = buildDoorOperations(handoff), report = evaluateFoundation(handoff), navigation = navigationAnalysis(handoff), furnitureUses = furnitureUseAnalysis(handoff);
       setEvaluationReport(report);
       setBuildingEnvelopes(buildBuildingEnvelopes(handoff));
       setRoomRegionAnalysis(analysis);
       setConnectivityGraph(graph);
       setDoorOperations(operations);
       setRoomNavigationAnalysis(navigation);
+      setFurnitureUseZones(furnitureUses);
       setEvaluationHighlights(evaluationIssueTargets(report.rules, nodes, analysis).map((target) => evaluationHighlightFor(target.ruleId, target, target.targetIndex)));
       setActiveEvaluationHighlight(null);
       setEvaluationError(null);
@@ -331,6 +340,7 @@ function App() {
               <label><input type="checkbox" checked={showConnectivity} disabled={!connectivityGraph} onChange={() => setShowConnectivity((shown) => !shown)} />显示空间连接</label>
               <label><input type="checkbox" checked={showDoorOperationDebug} disabled={!doorOperations.length} onChange={() => setShowDoorOperationDebug((shown) => !shown)} />显示门操作区域</label>
               <label><input type="checkbox" checked={showNavigableSpace} disabled={!roomNavigationAnalysis} onChange={() => setShowNavigableSpace((shown) => !shown)} />显示可通行空间</label>
+              <label><input type="checkbox" checked={showFurnitureUseZones} disabled={!furnitureUseZones} onChange={() => setShowFurnitureUseZones((shown) => !shown)} />显示家具使用区</label>
             </div>
           </section>
           <Inspector
@@ -380,6 +390,8 @@ function App() {
                 showDoorOperationDebug={showDoorOperationDebug}
                 navigationAnalysis={roomNavigationAnalysis}
                 showNavigableSpace={showNavigableSpace}
+                furnitureUseAnalysis={furnitureUseZones}
+                showFurnitureUseZones={showFurnitureUseZones}
                 measurementMode={measurementMode}
                 measurementUnit={measurementUnit}
                 manualMeasurements={manualMeasurements.filter((item) => item.levelId === (canvas.levelId || levels[0]?.id || ""))}
@@ -420,6 +432,8 @@ function CanvasPanel({
   showDoorOperationDebug,
   navigationAnalysis,
   showNavigableSpace,
+  furnitureUseAnalysis,
+  showFurnitureUseZones,
   onSelect,
   onClearEvaluationHighlight,
   onActivateEvaluationHighlight,
@@ -452,6 +466,8 @@ function CanvasPanel({
   showDoorOperationDebug: boolean;
   navigationAnalysis: RoomNavigationAnalysis | null;
   showNavigableSpace: boolean;
+  furnitureUseAnalysis: FurnitureUseAnalysis | null;
+  showFurnitureUseZones: boolean;
   onSelect: (id: string | null) => void;
   onClearEvaluationHighlight: () => void;
   onActivateEvaluationHighlight: (highlight: EvaluationHighlight) => void;
@@ -544,6 +560,8 @@ function CanvasPanel({
         showDoorOperationDebug={showDoorOperationDebug}
         navigationAnalysis={navigationAnalysis}
         showNavigableSpace={showNavigableSpace}
+        furnitureUseAnalysis={furnitureUseAnalysis}
+        showFurnitureUseZones={showFurnitureUseZones}
         onSelect={onSelect}
         onClearEvaluationHighlight={onClearEvaluationHighlight}
         onActivateEvaluationHighlight={onActivateEvaluationHighlight}
@@ -629,6 +647,8 @@ function Plan({
   showDoorOperationDebug,
   navigationAnalysis,
   showNavigableSpace,
+  furnitureUseAnalysis,
+  showFurnitureUseZones,
   onSelect,
   onClearEvaluationHighlight,
   onActivateEvaluationHighlight,
@@ -660,6 +680,8 @@ function Plan({
   showDoorOperationDebug: boolean;
   navigationAnalysis: RoomNavigationAnalysis | null;
   showNavigableSpace: boolean;
+  furnitureUseAnalysis: FurnitureUseAnalysis | null;
+  showFurnitureUseZones: boolean;
   onSelect: (id: string | null) => void;
   onClearEvaluationHighlight: () => void;
   onActivateEvaluationHighlight: (highlight: EvaluationHighlight) => void;
@@ -857,6 +879,7 @@ function Plan({
           <ManualMeasurements measurements={manualMeasurements} preview={measurementMode !== "off" && measurementStart && measurementHover ? { mode: activeMeasurementMode, start: measurementStart, end: measurementHover } : null} unit={measurementUnit} viewRotation={rotation} selectedId={selectedManualId} onSelect={onSelectManual} onDelete={onDeleteManual} />
           {measurementMode !== "off" && measurementHover && <SnapIndicator snap={measurementHover} active={Boolean(measurementStart)} />}
           </g>
+          {furnitureUseAnalysis && (showFurnitureUseZones || Boolean(activeEvaluationHighlight && /^G3-0(?:1[4-9]|2[0-4])$/.test(activeEvaluationHighlight.ruleId))) && <FurnitureUseZoneOverlay analysis={furnitureUseAnalysis} levelId={levelId} activeHighlight={activeEvaluationHighlight} showDebug={showFurnitureUseZones} />}
           {highlightsOnLevel.length > 0 && <EvaluationHighlightOverlay highlights={highlightsOnLevel} activeHighlight={activeEvaluationHighlight} nodes={nodes} exactWalls={exactWalls} onActivate={onActivateEvaluationHighlight} />}
           {(showDoorOperationDebug || activeEvaluationHighlight?.ruleId === "G3-002" || activeEvaluationHighlight?.ruleId === "G3-007" || activeEvaluationHighlight?.ruleId === "G3-008") && <DoorOperationOverlay operations={doorOperations} levelId={levelId} activeHighlight={activeEvaluationHighlight} showDebug={showDoorOperationDebug} />}
           {navigationAnalysis && (showNavigableSpace || Boolean(activeEvaluationHighlight && ["G3-003", "G3-004", "G3-006"].includes(activeEvaluationHighlight.ruleId))) && <NavigableSpaceOverlay analysis={navigationAnalysis} levelId={levelId} activeHighlight={activeEvaluationHighlight} showDebug={showNavigableSpace} />}
@@ -872,6 +895,7 @@ function Plan({
       {showConnectivity && connectivityGraph && <div className="connectivity-legend"><span><i className="reachable" />可达节点</span><span><i className="unreachable" />不可达/无入口</span><span><i className="portal" />有效门连接</span><span><i className="unresolved" />未解析门或楼梯</span></div>}
       {showDoorOperationDebug && <div className="door-operation-legend"><span><i className="swing" />门扇扫掠</span><span><i className="entry" />入口检测区域</span></div>}
       {showNavigableSpace && navigationAnalysis && <div className="navigable-space-legend"><span><i className="free" />可通行区域</span><span><i className="occupied" />障碍占用</span><span><i className="path" />已连接路径</span><span><i className="interruption" />路径中断</span><span><i className="blocker" />阻挡对象</span></div>}
+      {showFurnitureUseZones && furnitureUseAnalysis && <div className="furniture-use-legend"><span><i className="usable" />基本使用区</span><span><i className="blocked" />不可用使用区</span><span><i className="candidate" />方向待确认</span></div>}
       <div className="legend">{formatPanelLength(viewBox.width, measurementUnit)} × {formatPanelLength(viewBox.height, measurementUnit)}</div>
     </div>
   );
@@ -912,6 +936,16 @@ function NavigableSpaceOverlay({ analysis, levelId, activeHighlight, showDebug }
     {rooms.flatMap((room) => room.paths.map((path, index) => path.points.length >= 2 ? <polyline key={`${room.roomRegionId}-path-${index}`} points={path.points.map(([x, z]) => `${x},${z}`).join(" ")} fill="none" stroke={path.status === "connected" ? "#1686a0" : activeHighlight?.status === "unable_to_determine" ? "#d8a449" : "#e23d35"} strokeDasharray={path.status === "blocked" ? "5 3" : undefined} strokeWidth={path.status === "blocked" ? "2.5" : "1.6"} vectorEffect="non-scaling-stroke" /> : null))}
     {rooms.flatMap((room) => room.portalNodes.flatMap((portal) => [<circle key={`${room.roomRegionId}-${portal.doorId}-source`} cx={portal.sourcePoint[0]} cy={portal.sourcePoint[1]} r=".07" fill="#fff" stroke="#1686a0" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />, portal.furnishedLanding ? <circle key={`${room.roomRegionId}-${portal.doorId}-landing`} cx={portal.furnishedLanding[0]} cy={portal.furnishedLanding[1]} r=".055" fill="#1686a0" /> : <g key={`${room.roomRegionId}-${portal.doorId}-missing`} transform={`translate(${portal.sourcePoint[0]} ${portal.sourcePoint[1]})`}><path d="M-.09,-.09 L.09,.09 M.09,-.09 L-.09,.09" stroke="#e23d35" strokeWidth="2" vectorEffect="non-scaling-stroke" /></g>]))}
     {rooms.filter((room) => room.anchorPoint).map((room) => <g key={`${room.roomRegionId}-anchor`} transform={`translate(${room.anchorPoint![0]} ${room.anchorPoint![1]})`}><circle r=".08" fill="#fff" stroke="#1686a0" strokeWidth="1.5" vectorEffect="non-scaling-stroke"/><circle r=".025" fill="#1686a0"/></g>)}
+  </g>;
+}
+function FurnitureUseZoneOverlay({ analysis, levelId, activeHighlight, showDebug }: { analysis: FurnitureUseAnalysis; levelId: string; activeHighlight: EvaluationHighlight | null; showDebug: boolean }) {
+  const activeOwnerId = activeHighlight && /^G3-0(?:1[4-9]|2[0-4])$/.test(activeHighlight.ruleId) ? activeHighlight.primaryId : null;
+  const assessments = new Map(analysis.assessments.map((assessment) => [assessment.zone.useZoneId, assessment]));
+  return <g className="furniture-use-zone-overlay" pointerEvents="none">
+    {analysis.useZones.filter((zone) => zone.levelId === levelId && (showDebug || zone.ownerObjectId === activeOwnerId)).map((zone) => {
+      const assessment = assessments.get(zone.useZoneId), active = zone.ownerObjectId === activeOwnerId, unresolved = !zone.usableForEvaluation, usable = assessment?.usable === true, color = unresolved ? "#d8a449" : usable ? "#36a269" : "#e23d35";
+      return <polygon key={zone.useZoneId} data-furniture-use-zone={zone.useZoneId} points={zone.polygon.map(([x, z]) => `${x},${z}`).join(" ")} fill={color} fillOpacity={active ? ".24" : ".12"} stroke={color} strokeDasharray={unresolved ? "6 4" : undefined} strokeWidth={active ? "2.5" : "1.4"} vectorEffect="non-scaling-stroke" />;
+    })}
   </g>;
 }
 function BuildingEnvelopeOverlay({ envelope }: { envelope: BuildingEnvelope }) {

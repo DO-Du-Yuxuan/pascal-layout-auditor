@@ -27,6 +27,15 @@ describe("building envelope and containment", () => {
     expect(outsideFootprintArea(rectangularFootprint(item("outside", -3, 5))!, envelope)).toBeCloseTo(1);
   });
 
+  it("uses the same clockwise Pascal rotation as the canvas furniture direction", () => {
+    const rotated = { ...item("rotated", 0, 0, 2, 1), resolvedRotationRadians: Math.PI / 2 };
+    const footprint = rectangularFootprint(rotated)!;
+    expect(footprint[0]).toEqual([expect.closeTo(-.5), expect.closeTo(1)]);
+    expect(footprint[1]).toEqual([expect.closeTo(-.5), expect.closeTo(-1)]);
+    expect(footprint[2]).toEqual([expect.closeTo(.5), expect.closeTo(-1)]);
+    expect(footprint[3]).toEqual([expect.closeTo(.5), expect.closeTo(1)]);
+  });
+
   it("reports missing footprints and missing boundaries as unable to determine, while excluding vehicles", () => {
     const noFootprint = { ...item("unknown", 2, 2), dimensionsMeters: null }, vehicle = { ...item("car", -20, 0), category: "vehicles" };
     expect(ruleG1023(handoff([], [noFootprint])).status).toBe("unable_to_determine");

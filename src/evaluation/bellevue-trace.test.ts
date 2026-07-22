@@ -97,5 +97,23 @@ describe("Bellevue G1 trace", () => {
     expect(report.rules.find((rule) => rule.ruleId === "G3-003")).toMatchObject({ status: "pass", measurements: expect.arrayContaining([expect.objectContaining({ name: "participatingRoomCount", value: 13 }), expect.objectContaining({ name: "internallyConnectedRoomCount", value: 13 })]) });
     expect(report.rules.find((rule) => rule.ruleId === "G3-004")).toMatchObject({ status: "pass", measurements: expect.arrayContaining([expect.objectContaining({ name: "participatingRoomCount", value: 21 }), expect.objectContaining({ name: "largeFurnitureBlockedPathCount", value: 0 })]) });
     expect(report.rules.find((rule) => rule.ruleId === "G3-006")).toMatchObject({ status: "unable_to_determine", diagnostics: [expect.objectContaining({ code: "fixed_obstacle_attribution_unresolved", normalizedObjectIds: expect.arrayContaining(["level_tf1ug5dswkkzfhqa-room-12", "item_ousmkp19jbxsvuhz", "item_tbac0ek6qdmwo1ug"]) })] });
+    expect(Object.fromEntries(report.rules.filter((rule) => /^G3-0(?:1[4-9]|2[0-4])$/.test(rule.ruleId)).map((rule) => [rule.ruleId, rule.status]))).toEqual({
+      "G3-014": "issue",
+      "G3-015": "pass",
+      "G3-016": "pass",
+      "G3-017": "pass",
+      "G3-018": "not_applicable",
+      "G3-019": "pass",
+      "G3-020": "pass",
+      "G3-021": "pass",
+      "G3-022": "unable_to_determine",
+      "G3-023": "pass",
+      "G3-024": "pass",
+    });
+    expect(report.rules.find((rule) => rule.ruleId === "G3-014")).toMatchObject({ normalizedObjectIds: expect.arrayContaining(["item_0aahggnuvs15c6lx", "item_qmhod8evoai6fg1z"]) });
+    expect(report.rules.find((rule) => rule.ruleId === "G3-017")).toMatchObject({ measurements: expect.arrayContaining([expect.objectContaining({ name: "bedroomRoomCount", value: 5 }), expect.objectContaining({ name: "bedroomEntryConnectedCount", value: 5 })]) });
+    expect(report.rules.find((rule) => rule.ruleId === "G3-015")).toMatchObject({ summary: "5 张床至少有一侧可用于基本上下床" });
+    expect(report.rules.find((rule) => rule.ruleId === "G3-016")).toMatchObject({ summary: "4 张双人床具备至少一个基本上下床位置" });
+    expect(report.rules.find((rule) => rule.ruleId === "G3-023")).toMatchObject({ summary: "8 把餐椅沿家具朝向反方向具有基本拉出区域", measurements: expect.arrayContaining([expect.objectContaining({ name: "evaluatedDiningChairCount", value: 8 })]) });
   });
 });

@@ -89,6 +89,10 @@ export type GeometryTolerances = {
   portalLandingSearchMeters: number;
   largeFurnitureMinimumAreaSquareMeters: number;
   smallObjectMaximumAreaSquareMeters: number;
+  furnitureUseZoneClearRatio: number;
+  bedAccessDepthMeters: number;
+  seatingAccessDepthMeters: number;
+  diningChairPulloutDepthMeters: number;
   physicalCollisionAreaSquareMeters: number;
   physicalCollisionVerticalMeters: number;
   stairLandingSampleClearanceMeters: number;

@@ -14,6 +14,7 @@ describe("evaluation handoff projection", () => {
     expect(handoff.doors.length).toBeGreaterThan(0);
     expect(handoff.windows.length).toBeGreaterThan(0);
     expect(handoff.furniture.length).toBeGreaterThan(0);
+    expect(handoff.furniture.find((item) => item.id === "item_0aahggnuvs15c6lx")).toMatchObject({ assetId: "double-bed", assetName: "Double Bed", category: "double-beds", functionTags: ["double-beds"], assetTags: expect.arrayContaining(["bed", "double"]) });
     expect(handoff.equipment.length).toBeGreaterThan(0);
     expect(handoff.shelves.length).toBeGreaterThan(0);
     expect(handoff.shelves.every((shelf) => Array.isArray(shelf.footprint))).toBe(true);

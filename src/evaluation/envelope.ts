@@ -61,7 +61,7 @@ export function rectangularFootprint(item: { dimensionsMeters: number[] | null; 
   const [width, , depth] = item.dimensionsMeters ?? [], [x, z] = item.resolvedWorldPosition ?? [], rotation = item.resolvedRotationRadians;
   if (![width, depth, x, z, rotation].every(Number.isFinite) || width! <= T.lengthMeters || depth! <= T.lengthMeters) return null;
   const c = Math.cos(rotation!), s = Math.sin(rotation!), local: Point[] = [[-width! / 2, -depth! / 2], [width! / 2, -depth! / 2], [width! / 2, depth! / 2], [-width! / 2, depth! / 2]];
-  return local.map(([dx, dz]) => [x! + dx * c - dz * s, z! + dx * s + dz * c]);
+  return local.map(([dx, dz]) => [x! + dx * c + dz * s, z! - dx * s + dz * c]);
 }
 
 export function outsideFootprintArea(footprint: Ring, envelope: BuildingEnvelope): number | null {
