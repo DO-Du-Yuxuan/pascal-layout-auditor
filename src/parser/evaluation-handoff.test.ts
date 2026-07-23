@@ -3,6 +3,7 @@ import referenceProject from "../../sample-data/Bellevue demo.json";
 import sampleHandoff from "../../fixtures/evaluation/sample-normalized-plan.json";
 import { parseProject } from "./parse";
 import { buildEvaluationHandoff } from "./evaluation-handoff";
+import { buildDoorOperations } from "../evaluation/door-operations";
 
 describe("evaluation handoff projection", () => {
   it("preserves Pascal IDs while exposing evaluator-facing objects and relationships", () => {
@@ -40,5 +41,14 @@ describe("evaluation handoff projection", () => {
     expect(sampleHandoff.stairs.length).toBeGreaterThan(0);
     expect(sampleHandoff.doors[0].rawPascalId).toBe(sampleHandoff.doors[0].id);
     expect(sampleHandoff.relationships.hostedOpenings.length).toBeGreaterThan(0);
+  });
+
+  it("does not turn missing Pascal door-operation fields into evaluator facts", () => {
+    const project = structuredClone(referenceProject) as any, rawDoor = Object.values(project.nodes).find((node: any) => node.type === "door") as any;
+    delete rawDoor.hingesSide;
+    delete rawDoor.swingDirection;
+    const handoff = buildEvaluationHandoff(parseProject(project)), door = handoff.doors.find((candidate) => candidate.id === rawDoor.id)!;
+    expect(door).toMatchObject({ hingesSide: null, swingDirection: null, effectiveHingesSide: null, effectiveSwingDirection: null });
+    expect(buildDoorOperations(handoff).find((operation) => operation.doorId === rawDoor.id)).toMatchObject({ usableForEvaluation: false, diagnostics: ["door_operation_data_unavailable"] });
   });
 });

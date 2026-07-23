@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildOperationUseAnalysis } from "./operation-use";
+import { buildOperationUseAnalysis, windowApproachAssessmentStatus } from "./operation-use";
 import { ruleG3009, ruleG3010, ruleG3011, ruleG3012, ruleG3013, ruleG3039, ruleG3040, ruleG3041, ruleG3042, ruleG3043 } from "./g3-final-rules";
 
 const level = { id: "L1", rawPascalId: "L1", levelId: "L1", parentId: null, visible: true, name: "Level 1" };
@@ -10,6 +10,12 @@ const reliableDrawer = { drawerDirection:"front",drawerExtensionDepthMeters:.45 
 const base = (zoneName="ROOM", furniture:any[]=[], equipment:any[]=[], doors=true) => { const outline:[[number,number],[number,number],[number,number],[number,number]]=[[0,0],[8,0],[8,6],[0,6]], zone={id:"Z",rawPascalId:"Z",levelId:"L1",parentId:"L1",visible:true,name:zoneName,outline,areaSquareMeters:48}; return {schemaVersion:"1.0",source:{},units:{},levels:[level],slabs:[{id:"S",rawPascalId:"S",levelId:"L1",parentId:"L1",visible:true,name:"Floor",outline,holes:[],areaSquareMeters:48,autoFromWalls:false}],walls:[wall("W1",[0,0],[8,0]),wall("W2",[8,0],[8,6]),wall("W3",[8,6],[0,6]),wall("W4",[0,6],[0,0])],doors:doors?[{id:"D",rawPascalId:"D",levelId:"L1",parentId:"W4",visible:true,name:"Door",hostWallId:"W4",rawWallLocalPosition:[3,1,0],resolvedWorldPosition:[0,3],resolvedTangentRadians:Math.PI/2,widthMeters:1,heightMeters:2.1,openingKind:"door",doorType:"hinged",hingesSide:"left",effectiveHingesSide:"left",swingDirection:"outward",effectiveSwingDirection:"outward",swingAngleRadians:Math.PI/2}]:[],windows:[],zones:[zone],spaces:[{...zone,sourceZoneId:"Z",source:"derived-from-zone"}],furniture,equipment,columns:[],shelves:[],stairs:[],shafts:[],relationships:{},unclassifiedNodes:[],diagnostics:[]} as any; };
 
 describe("G3 final operation and household checks", () => {
+  it("shares the G3-013 window approach classification with the UI", () => {
+    expect(windowApproachAssessmentStatus({ clearRatio: .19 })).toBe("issue");
+    expect(windowApproachAssessmentStatus({ clearRatio: .20 })).toBe("partial");
+    expect(windowApproachAssessmentStatus({ clearRatio: .49 })).toBe("partial");
+    expect(windowApproachAssessmentStatus({ clearRatio: .50 })).toBe("pass");
+  });
   it("keeps a normal reliable cabinet operable and reports a bed blocking its front", () => {
     const cabinet=item("cabinet","Fixed Cabinet","cabinets",4,1,.8,.6,reliableDoor);
     expect(ruleG3010(base("ROOM",[cabinet])).status).toBe("pass");

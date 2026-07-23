@@ -45,7 +45,7 @@ import type { FurnitureUseAnalysis } from "./evaluation/furniture-use";
 import { fixtureUseAnalysis } from "./evaluation/g3-fixture-rules";
 import type { FixtureUseAnalysis } from "./evaluation/fixture-use";
 import { operationUseAnalysis } from "./evaluation/g3-final-rules";
-import type { OperationUseAnalysis } from "./evaluation/operation-use";
+import { windowApproachAssessmentStatus, type OperationUseAnalysis } from "./evaluation/operation-use";
 
 type Visibility = {
   images: boolean;
@@ -360,7 +360,7 @@ function App() {
               <label><input type="checkbox" checked={showNavigableSpace} disabled={!roomNavigationAnalysis} onChange={() => setShowNavigableSpace((shown) => !shown)} />显示可通行空间</label>
               <label><input type="checkbox" checked={showFurnitureUseZones} disabled={!furnitureUseZones} onChange={() => setShowFurnitureUseZones((shown) => !shown)} />显示家具使用区</label>
               <label><input type="checkbox" checked={showFixtureUseZones} disabled={!fixtureUseZones} onChange={() => setShowFixtureUseZones((shown) => !shown)} />显示厨卫使用区</label>
-              <label><input type="checkbox" checked={showOperationUseZones} disabled={!operationUseZones} onChange={() => setShowOperationUseZones((shown) => !shown)} />显示操作区域</label>
+              <label><input type="checkbox" checked={showOperationUseZones} disabled={!operationUseZones} onChange={() => setShowOperationUseZones((shown) => !shown)} />显示操作与窗前接近区域</label>
             </div>
           </section>
           <Inspector
@@ -950,7 +950,7 @@ function Plan({
       {showNavigableSpace && navigationAnalysis && <div className="navigable-space-legend"><span><i className="free" />可通行区域</span><span><i className="occupied" />障碍占用</span><span><i className="path" />已连接路径</span><span><i className="interruption" />路径中断</span><span><i className="blocker" />阻挡对象</span></div>}
       {showFurnitureUseZones && furnitureUseAnalysis && <div className="furniture-use-legend"><span><i className="usable" />基本使用区</span><span><i className="blocked" />不可用使用区</span><span><i className="candidate" />方向待确认</span></div>}
       {showFixtureUseZones && fixtureUseAnalysis && <div className="fixture-use-legend"><span><i className="usable" />厨卫基本使用区</span><span><i className="blocked" />使用区被阻挡</span><span><i className="candidate" />数据待确认</span></div>}
-      {showOperationUseZones && operationUseAnalysis && <div className="fixture-use-legend"><span><i className="usable" />基本操作区域</span><span><i className="blocked" />操作区域被阻挡</span><span><i className="candidate" />开启信息待确认</span></div>}
+      {showOperationUseZones && operationUseAnalysis && <div className="fixture-use-legend"><span><i className="usable" />可用操作/接近区</span><span><i className="blocked" />问题操作/接近区</span><span><i className="candidate" />部分受阻或数据待确认</span></div>}
       <div className="legend">{formatPanelLength(viewBox.width, measurementUnit)} × {formatPanelLength(viewBox.height, measurementUnit)}</div>
     </div>
   );
@@ -1014,7 +1014,17 @@ function OperationUseZoneOverlay({ analysis, levelId, activeHighlight, showDebug
   const activeOwnerId = activeHighlight && /^G3-0(?:0[9]|1[0-3]|3[9]|4[0-3])$/.test(activeHighlight.ruleId) ? activeHighlight.primaryId : null;
   const assessments = new Map(analysis.assessments.map((assessment) => [assessment.zone.operationZoneId, assessment]));
   return <g className="fixture-use-zone-overlay" pointerEvents="none">
-    {analysis.zones.filter((zone) => zone.levelId === levelId && (showDebug || zone.ownerObjectId === activeOwnerId)).map((zone) => { const assessment = assessments.get(zone.operationZoneId), active = zone.ownerObjectId === activeOwnerId, unresolved = !zone.geometryReliable, usable = assessment?.usable === true, color = unresolved ? "#d8a449" : usable ? "#36a269" : "#e23d35"; return <polygon key={zone.operationZoneId} data-operation-zone={zone.operationZoneId} points={zone.polygon.map(([x,z]) => `${x},${z}`).join(" ")} fill={color} fillOpacity={active ? ".26" : ".13"} stroke={color} strokeDasharray={unresolved ? "6 4" : undefined} strokeWidth={active ? "2.5" : "1.4"} vectorEffect="non-scaling-stroke" />; })}
+    {analysis.zones.filter((zone) => zone.levelId === levelId && (showDebug || zone.ownerObjectId === activeOwnerId)).map((zone) => {
+      const assessment = assessments.get(zone.operationZoneId), active = zone.ownerObjectId === activeOwnerId, unresolved = !zone.geometryReliable || !assessment;
+      // Window debug colours intentionally mirror G3-013: red is a reportable
+      // issue, amber is partial/diagnostic, and green is a pass.
+      const windowApproach = zone.kind === "window-approach", windowStatus = windowApproach && assessment ? windowApproachAssessmentStatus(assessment) : null,
+        partial = windowStatus === "partial",
+        issue = windowStatus === "issue",
+        usable = windowStatus ? windowStatus === "pass" : assessment?.usable === true,
+        color = unresolved || partial ? "#d8a449" : issue || !usable ? "#e23d35" : "#36a269";
+      return <polygon key={zone.operationZoneId} data-operation-zone={zone.operationZoneId} data-operation-zone-kind={zone.kind} points={zone.polygon.map(([x,z]) => `${x},${z}`).join(" ")} fill={color} fillOpacity={active ? ".26" : ".13"} stroke={color} strokeDasharray={unresolved || partial ? "6 4" : undefined} strokeWidth={active ? "2.5" : "1.4"} vectorEffect="non-scaling-stroke" />;
+    })}
   </g>;
 }
 function BuildingEnvelopeOverlay({ envelope }: { envelope: BuildingEnvelope }) {

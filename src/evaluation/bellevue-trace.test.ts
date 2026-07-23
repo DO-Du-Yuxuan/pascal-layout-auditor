@@ -44,6 +44,7 @@ describe("Bellevue G1 trace", () => {
     expect(rawWindow.position?.[0]).toBe(window.rawWallLocalPosition![0]);
     expect(rawWindow.width).toBe(window.widthMeters);
     expect(rawWindow.frameThickness).toBe(0.05);
+    expect(window.operationState).toBe(rawWindow.operationState);
     expect(relation).toMatchObject({ status: "inside", openingCenterMeters: 0.9003166435429053, openingStartMeters: 0.3406715838381247, openingEndMeters: 1.459961703247686, wallLengthMeters: 1.8324012039371924, leftOvershootMeters: 0, rightOvershootMeters: 0 });
     expect(found.status).toBe("pass");
   });

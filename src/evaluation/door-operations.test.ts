@@ -10,11 +10,16 @@ const base = (options: any = {}) => ({ schemaVersion: "1.0", source: {}, units: 
 describe("Door operation geometry and G3 obstruction checks", () => {
   it("creates swing geometry only for a hinged door with explicit operation fields", () => {
     expect(buildDoorOperations(base())[0]).toMatchObject({ usableForEvaluation: true, hingePoint: [4.5, 0] });
+    const rightHinged = buildDoorOperations(base({ doors: [door("right", { hingesSide: "right" })] }))[0]!;
+    expect(rightHinged.openLeafSegment?.[1][1]).toBeGreaterThan(0);
+    const rightOutward = buildDoorOperations(base({ doors: [door("right-outward", { hingesSide: "right", swingDirection: "outward" })] }))[0]!;
+    expect(rightOutward.openLeafSegment?.[1][1]).toBeLessThan(0);
     expect(buildDoorOperations(base({ doors: [door("slide", { doorType: "sliding" })] }))[0]).toMatchObject({ usableForEvaluation: false, diagnostics: ["non_swing_door_not_applicable"] });
     const double = buildDoorOperations(base({ doors: [door("double", { doorType: "double", leafCount: 2 })] }))[0]!;
     expect(double).toMatchObject({ usableForEvaluation: true, diagnostics: ["double_door_equal_leaf_assumption"], leaves: [{ leafIndex: 0 }, { leafIndex: 1 }] });
     expect(double.leaves.map((leaf) => Math.hypot(leaf.closedLeafSegment[1][0] - leaf.closedLeafSegment[0][0], leaf.closedLeafSegment[1][1] - leaf.closedLeafSegment[0][1]))).toEqual([.5, .5]);
     expect(double.leaves.every((leaf) => leaf.openLeafSegment[1][1] > 0)).toBe(true);
+    expect(buildDoorOperations(base({ doors: [door("french", { doorType: "french", leafCount: 2 })] }))[0]).toMatchObject({ usableForEvaluation: true, leaves: [{ leafIndex: 0 }, { leafIndex: 1 }] });
     expect(buildDoorOperations(base({ doors: [door("short-swing", { swingAngleRadians: Math.PI * .45 })] }))[0]).toMatchObject({ usableForEvaluation: false, diagnostics: ["door_operation_data_unavailable"] });
     expect(buildDoorOperations(base({ doors: [door("unknown", { hingesSide: null })] }))[0]?.diagnostics).toContain("door_operation_data_unavailable");
   });

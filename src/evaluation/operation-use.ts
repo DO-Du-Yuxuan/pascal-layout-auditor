@@ -15,6 +15,10 @@ export type OperationWindow = { window: EvaluationHandoff["windows"][number]; op
 export type OperationZone = { operationZoneId: string; ownerObjectId: string; levelId: string | null; roomRegionId: string | null; kind: OperationZoneKind; polygon: Ring; geometryReliable: boolean; diagnostics: string[] };
 export type OperationAssessment = { zone: OperationZone; clearRatio: number; insideRoomRatio: number; blockerIds: string[]; reachableFromEntry: boolean; usable: boolean };
 export type OperationUseAnalysis = { navigation: RoomNavigationAnalysis; items: OperationItem[]; windows: OperationWindow[]; zones: OperationZone[]; assessments: OperationAssessment[]; laundryRooms: RoomNavigableSpace[]; storageRooms: RoomNavigableSpace[]; diagnostics: string[] };
+export type WindowApproachAssessmentStatus = "pass" | "partial" | "issue";
+export const windowApproachAssessmentStatus = (assessment: Pick<OperationAssessment, "clearRatio">): WindowApproachAssessmentStatus =>
+  assessment.clearRatio < T.windowOperationIssueClearRatio ? "issue" :
+    assessment.clearRatio < T.windowOperationPassClearRatio ? "partial" : "pass";
 
 const close = (ring: Ring): Ring => ring.length && (ring[0]![0] !== ring[ring.length - 1]![0] || ring[0]![1] !== ring[ring.length - 1]![1]) ? [...ring, ring[0]!] : ring;
 const multiArea = (multi: Ring[][]) => multi.reduce((sum, polygon) => sum + polygonArea(polygon[0] ?? []), 0);
