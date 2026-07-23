@@ -115,6 +115,8 @@ export type GeometryTolerances = {
   drawerOperationDepthMeters: number;
   applianceOperationDepthMeters: number;
   windowOperationDepthMeters: number;
+  windowOperationPassClearRatio: number;
+  windowOperationIssueClearRatio: number;
   physicalCollisionAreaSquareMeters: number;
   physicalCollisionVerticalMeters: number;
   stairLandingSampleClearanceMeters: number;

@@ -15,13 +15,13 @@ describe("G3 final operation and household checks", () => {
     expect(ruleG3010(base("ROOM",[cabinet])).status).toBe("pass");
     expect(ruleG3010(base("ROOM",[cabinet,item("bed","Bed","beds",4,1.65,1,.7)])).status).toBe("issue");
   });
-  it("reports a reliable drawer that cannot pull out and leaves missing drawer geometry unresolved", () => {
+  it("reports an explicitly modelled blocked drawer and passes a clear bounded-depth drawer", () => {
     const drawer=item("drawer","Drawer Unit","drawers",4,1,.8,.6,reliableDrawer);
     expect(ruleG3011(base("ROOM",[drawer,item("block","Bed","beds",4,1.55,1,.7)]))).toMatchObject({status:"issue",normalizedObjectIds:expect.arrayContaining(["drawer"])});
-    expect(ruleG3011(base("ROOM",[item("missing","Bedside Drawer","drawers",4,1)]))).toMatchObject({status:"unable_to_determine"});
+    expect(ruleG3011(base("ROOM",[item("bounded","Bedside Drawer","drawers",4,1)]))).toMatchObject({status:"pass",diagnostics:[expect.objectContaining({code:"drawer_bounded_envelope_clear"})]});
   });
-  it("keeps missing appliance-door fields unresolved and detects a reliable blocked appliance door", () => {
-    expect(ruleG3012(base("LAUNDRY",[],[item("washer","Washing Machine","laundry-appliances",4,1)]))).toMatchObject({status:"unable_to_determine"});
+  it("passes a clear bounded-width appliance envelope and detects a reliable blocked appliance door", () => {
+    expect(ruleG3012(base("LAUNDRY",[],[item("washer","Washing Machine","laundry-appliances",4,1)]))).toMatchObject({status:"pass",diagnostics:[expect.objectContaining({code:"appliance_bounded_envelope_clear"})]});
     const washer=item("washer","Washing Machine","laundry-appliances",4,1,.8,.7,reliableDoor);
     expect(ruleG3012(base("LAUNDRY",[item("block","Cabinet","cabinets",4,1.65,1,.7)], [washer])).status).toBe("issue");
   });
@@ -41,9 +41,9 @@ describe("G3 final operation and household checks", () => {
     const h=base("LAUNDRY",[item("sink","Utility Sink","utility-sink",5,1)],[item("washer","Washing Machine","laundry-appliances",3,1)]);
     expect(ruleG3043(h).status).toBe("pass");
   });
-  it("keeps operable-window daily-use semantics unresolved and excludes fixed windows", () => {
+  it("treats every operable window as daily-use and excludes fixed windows", () => {
     const h=base(); h.windows=[{id:"window",rawPascalId:"window",levelId:"L1",parentId:"W1",visible:true,name:"Window",hostWallId:"W1",resolvedWorldPosition:[4,0],widthMeters:1,heightMeters:1,windowType:"casement"}];
-    expect(ruleG3013(h)).toMatchObject({status:"unable_to_determine",normalizedObjectIds:["window"]});
+    expect(ruleG3013(h)).toMatchObject({status:"pass",measurements:expect.arrayContaining([expect.objectContaining({name:"operableWindowCount",value:1})])});
     const fixed=base(); fixed.windows=[{...h.windows[0],windowType:"fixed"}];
     expect(ruleG3013(fixed).status).toBe("not_applicable");
   });

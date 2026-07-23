@@ -37,6 +37,8 @@ export const G1_GEOMETRY_TOLERANCES: GeometryTolerances = Object.freeze({
   drawerOperationDepthMeters: 0.45,
   applianceOperationDepthMeters: 0.60,
   windowOperationDepthMeters: 0.60,
+  windowOperationPassClearRatio: 0.50,
+  windowOperationIssueClearRatio: 0.20,
   physicalCollisionAreaSquareMeters: 0.01,
   physicalCollisionVerticalMeters: 0.005,
   stairLandingSampleClearanceMeters: 0.10,

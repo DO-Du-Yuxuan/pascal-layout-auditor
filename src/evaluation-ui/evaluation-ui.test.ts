@@ -81,10 +81,10 @@ describe("Bellevue Room Region UI adapter", () => {
     expect(targets.filter((target) => target.ruleId === "G3-004")).toEqual([]);
     expect(targets.filter((target) => target.ruleId === "G3-006")).toEqual([expect.objectContaining({ primaryId: "level_tf1ug5dswkkzfhqa-room-12", levelName: "Level 2", status: "unable_to_determine" })]);
     expect(targets.some((target) => target.ruleId === "G3-005")).toBe(false);
-    expect(targets.filter((target) => target.ruleId === "G3-011")).toHaveLength(3);
-    expect(targets.filter((target) => target.ruleId === "G3-012")).toEqual([expect.objectContaining({ primaryId: "item_yatt1lmodexobbuf", levelName: "Level 1" })]);
-    expect(targets.filter((target) => target.ruleId === "G3-013")).toHaveLength(27);
-    expect(targets.filter((target) => target.ruleId === "G3-039")).toEqual([expect.objectContaining({ primaryId: "item_yatt1lmodexobbuf", levelName: "Level 1" })]);
+    expect(targets.filter((target) => target.ruleId === "G3-011")).toEqual([]);
+    expect(targets.filter((target) => target.ruleId === "G3-012")).toEqual([]);
+    expect(targets.filter((target) => target.ruleId === "G3-013")).toHaveLength(3);
+    expect(targets.filter((target) => target.ruleId === "G3-039")).toEqual([]);
     expect(targets.filter((target) => target.ruleId === "G3-042")).toHaveLength(2);
   });
 
@@ -93,7 +93,13 @@ describe("Bellevue Room Region UI adapter", () => {
     expect(ids).toHaveLength(43);
     expect(new Set(ids).size).toBe(43);
     expect(ids.sort()).toEqual(Array.from({ length: 43 }, (_, index) => `G3-${String(index + 1).padStart(3, "0")}`).sort());
-    expect(report.g3Summary).toMatchObject({ overallStatus: "issue", counts: { pass: 27, issue: 3, unable_to_determine: 9, not_applicable: 4 }, severityCounts: { severe: 0, major: 3, general: 0 } });
+    expect(report.g3Summary).toMatchObject({ overallStatus: "issue", counts: { pass: 30, issue: 4, unable_to_determine: 5, not_applicable: 4 }, severityCounts: { severe: 0, major: 4, general: 0 } });
+  });
+
+  it("does not draw a related object from another Level on the focused canvas", () => {
+    const washer = nodes.item_yatt1lmodexobbuf!, otherLevelZone = nodes.zone_z0jagp9vt3kt3fd7!, template = rule("G3-006");
+    const synthetic = { ...template, ruleId: "G3-039", status: "unable_to_determine" as const, diagnostics: [{ severity: "warning" as const, code: "cross_level_reference", message: "跨楼层关联", normalizedObjectIds: [washer.id, otherLevelZone.id], origin: "source_data" as const }] };
+    expect(designerRulePresentation(synthetic, nodes, analysis).targets[0]).toMatchObject({ primaryId: washer.id, relatedIds: [] });
   });
 
   it("focuses a synthetic G3 room issue through the shared Room Region adapter", () => {
