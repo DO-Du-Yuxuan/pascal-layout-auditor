@@ -7,6 +7,8 @@
 .evaluation-overall.status-unable_to_determine { background: #fff1d6; }
 .evaluation-counts { display: grid; gap: 4px; grid-template-columns: 1fr 1fr; margin: 6px 0; }
 .evaluation-counts span { background: #f2f4f1; border-radius: 3px; display: flex; font-size: 8px; justify-content: space-between; padding: 4px; }
+.g3-summary { display: grid; gap: 5px; padding: 9px; margin: 7px 0; border: 1px solid #d8ddd8; border-radius: 5px; background: #f5f8f5; font-size: 8px; color: #4a5450; }
+.g3-summary strong { color: #25312c; font-size: 9px; }
 .evaluation-rule { background: #f5f6f4; border-left: 3px solid #90a198; margin-top: 5px; padding: 4px 5px; }
 .evaluation-rule.is-focusable { cursor: pointer; }
 .evaluation-rule.is-focusable:hover { background: #eef2ed; box-shadow: 0 0 0 1px #cbd5ce; }

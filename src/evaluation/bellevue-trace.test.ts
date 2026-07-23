@@ -126,5 +126,12 @@ describe("Bellevue G1 trace", () => {
     expect(fixtureAnalysis.bathroomRooms).toHaveLength(4);
     expect(fixtureAnalysis.items.filter((item) => item.semantic === "toilet")).toHaveLength(4);
     expect(fixtureAnalysis.items.filter((item) => item.semantic === "basin")).toHaveLength(4);
+    expect(Object.fromEntries(report.rules.filter((rule) => /^G3-0(?:0[9]|1[0-3]|3[9]|4[0-3])$/.test(rule.ruleId)).map((rule) => [rule.ruleId, rule.status]))).toEqual({
+      "G3-009": "not_applicable", "G3-010": "unable_to_determine", "G3-011": "unable_to_determine", "G3-012": "unable_to_determine", "G3-013": "unable_to_determine",
+      "G3-039": "unable_to_determine", "G3-040": "pass", "G3-041": "pass", "G3-042": "issue", "G3-043": "not_applicable",
+    });
+    expect(report.rules.find((rule) => rule.ruleId === "G3-039")).toMatchObject({ diagnostics: [expect.objectContaining({ code: "laundry_appliance_zone_relation_unresolved", normalizedObjectIds: expect.arrayContaining(["item_yatt1lmodexobbuf", "zone_z0jagp9vt3kt3fd7"]) })] });
+    expect(report.rules.find((rule) => rule.ruleId === "G3-042")).toMatchObject({ normalizedObjectIds: ["item_j68jyi0mxu7g4d5d", "item_qt7unfxoxp0opoa1"] });
+    expect(report.g3Summary).toMatchObject({ overallStatus: "issue", counts: { pass: 27, issue: 3, unable_to_determine: 9, not_applicable: 4 } });
   });
 });

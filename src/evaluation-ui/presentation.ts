@@ -28,6 +28,8 @@ const statusPriority: Record<RuleResult["status"], number> = { issue: 0, unable_
 const furnitureSpecialistRule = (ruleId: string) => /^G3-0(?:1[4-9]|2[0-4])$/.test(ruleId);
 const fixtureSpecialistRule = (ruleId: string) => /^G3-0(?:2[5-9]|3[0-8])$/.test(ruleId);
 const fixtureItemRule = (ruleId: string) => ["G3-026", "G3-027", "G3-029", "G3-032", "G3-034", "G3-035", "G3-036", "G3-038"].includes(ruleId);
+const operationItemRule = (ruleId: string) => ["G3-010", "G3-011", "G3-012", "G3-039", "G3-040", "G3-042", "G3-043"].includes(ruleId);
+const finalOperationRule = (ruleId: string) => /^G3-0(?:0[9]|1[0-3]|3[9]|4[0-3])$/.test(ruleId);
 export const orderEvaluationRulesForDisplay = (rules: RuleResult[]) => rules.map((rule, index) => ({ rule, index })).sort((a, b) => statusPriority[a.rule.status] - statusPriority[b.rule.status] || a.index - b.index).map((item) => item.rule);
 
 const measurement = (rule: RuleResult, name: string) => rule.measurements.find((item) => item.name === name)?.value;
@@ -36,16 +38,18 @@ const humanLevelName = (levelId: string | undefined, nodes: Record<string, NodeD
 export function evaluationFocusTargets(rule: RuleResult, nodes: Record<string, NodeData>, roomAnalysis?: RoomRegionAnalysis | null): EvaluationFocusTarget[] {
   if (rule.status !== "issue" && rule.status !== "unable_to_determine") return [];
   const diagnosticIds = [...new Set(rule.diagnostics.filter((diagnostic) => rule.status === "issue" ? diagnostic.severity === "error" : diagnostic.severity !== "info").flatMap((diagnostic) => diagnostic.normalizedObjectIds.slice(0, 1)))];
-  const focusIds = rule.ruleId === "G1-023" && rule.status === "issue" ? [...new Set(rule.diagnostics.filter((diagnostic) => ["item_outside_building_envelope", "item_penetrates_wall", "item_physical_collision"].includes(diagnostic.code)).flatMap((diagnostic) => diagnostic.normalizedObjectIds.slice(0, 1)))] : ["G3-001", "G3-002", "G3-007", "G3-008"].includes(rule.ruleId) || rule.status === "unable_to_determine" ? diagnosticIds : rule.normalizedObjectIds;
+  const focusIds = rule.ruleId === "G1-023" && rule.status === "issue" ? [...new Set(rule.diagnostics.filter((diagnostic) => ["item_outside_building_envelope", "item_penetrates_wall", "item_physical_collision"].includes(diagnostic.code)).flatMap((diagnostic) => diagnostic.normalizedObjectIds.slice(0, 1)))] : ["G3-001", "G3-002", "G3-007", "G3-008", "G3-009"].includes(rule.ruleId) || rule.status === "unable_to_determine" ? diagnosticIds : rule.normalizedObjectIds;
   const candidates = focusIds.map((id) => nodes[id]).filter((node): node is NodeData => Boolean(node));
   const primary = rule.ruleId === "G1-004" ? candidates.filter((node) => node.type === "wall")
     : rule.ruleId === "G1-005" || rule.ruleId === "G3-001" ? candidates.filter((node) => node.type === "stair")
       : rule.ruleId === "G1-013" ? candidates.filter((node) => node.type === "window" || node.type === "door")
         : rule.ruleId === "G1-023" ? candidates.filter((node) => node.type === "item")
-          : ["G3-002", "G3-007", "G3-008"].includes(rule.ruleId) ? candidates.filter((node) => node.type === "door")
+          : ["G3-002", "G3-007", "G3-008", "G3-009"].includes(rule.ruleId) ? candidates.filter((node) => node.type === "door")
+          : rule.ruleId === "G3-013" ? candidates.filter((node) => node.type === "window")
           : rule.ruleId === "G3-037" ? candidates.filter((node) => node.type === "door")
           : rule.ruleId === "G3-025" ? candidates.filter((node) => node.type === "zone")
           : fixtureItemRule(rule.ruleId) ? candidates.filter((node) => node.type === "item")
+          : operationItemRule(rule.ruleId) ? candidates.filter((node) => node.type === "item")
           : furnitureSpecialistRule(rule.ruleId) ? candidates.filter((node) => node.type === "item")
           : ["G1-007", "G1-009", "G1-019"].includes(rule.ruleId) ? candidates.filter((node) => node.type === "zone") : [];
   const nodeTargets = primary.map((node, index) => {
@@ -55,7 +59,7 @@ export function evaluationFocusTargets(rule: RuleResult, nodes: Record<string, N
     const relatedIds = rule.ruleId.startsWith("G3-") || rule.ruleId === "G1-023" ? rule.diagnostics.filter((diagnostic) => diagnostic.normalizedObjectIds[0] === node.id).flatMap((diagnostic) => diagnostic.normalizedObjectIds.filter((id) => id !== node.id && nodes[id])).filter((id, index, all) => all.indexOf(id) === index) : hostId && nodes[hostId] ? [hostId] : [];
     return { primaryId: node.id, relatedIds, label: `${typeLabel} · ${levelName}`, levelId, levelName, status: rule.status };
   });
-  const roomTargets = ["G1-012", "G1-019", "G3-001", "G3-003", "G3-004", "G3-005", "G3-006", "G3-017", "G3-019", "G3-021", "G3-024", "G3-025", "G3-028", "G3-030", "G3-031", "G3-033"].includes(rule.ruleId) ? (roomAnalysis?.rooms ?? []).filter((room) => focusIds.includes(room.roomRegionId)).map((room, index) => { const navigationRule = ["G3-003", "G3-004", "G3-006", "G3-017", "G3-019", "G3-021", "G3-024", "G3-025", "G3-028", "G3-030", "G3-031", "G3-033"].includes(rule.ruleId), relatedIds = navigationRule ? rule.diagnostics.filter((diagnostic) => diagnostic.normalizedObjectIds.includes(room.roomRegionId)).flatMap((diagnostic) => diagnostic.normalizedObjectIds.filter((id) => id !== room.roomRegionId && nodes[id])).filter((id, position, all) => all.indexOf(id) === position) : rule.ruleId === "G3-001" && rule.status === "unable_to_determine" ? [] : room.boundaryWallIds, zoneNames = (roomAnalysis?.roomToZoneIds[room.roomRegionId] ?? []).map((id) => nodes[id]?.name?.trim()).filter((value): value is string => Boolean(value)), roomName = zoneNames.join(" / ") || `${rule.ruleId === "G3-001" ? "跨层待核验空间" : rule.ruleId === "G3-005" ? "无入口空间" : navigationRule ? rule.status === "unable_to_determine" ? "待核验空间" : "通行受阻空间" : "异常空间"} ${index + 1}`; return { primaryId: room.roomRegionId, relatedIds, label: `${roomName} · ${humanLevelName(room.levelId, nodes)}`, levelId: room.levelId, levelName: humanLevelName(room.levelId, nodes), status: rule.status }; }) : [];
+  const roomTargets = ["G1-012", "G1-019", "G3-001", "G3-003", "G3-004", "G3-005", "G3-006", "G3-017", "G3-019", "G3-021", "G3-024", "G3-025", "G3-028", "G3-030", "G3-031", "G3-033", "G3-041"].includes(rule.ruleId) ? (roomAnalysis?.rooms ?? []).filter((room) => focusIds.includes(room.roomRegionId)).map((room, index) => { const navigationRule = ["G3-003", "G3-004", "G3-006", "G3-017", "G3-019", "G3-021", "G3-024", "G3-025", "G3-028", "G3-030", "G3-031", "G3-033", "G3-041"].includes(rule.ruleId), relatedIds = navigationRule ? rule.diagnostics.filter((diagnostic) => diagnostic.normalizedObjectIds.includes(room.roomRegionId)).flatMap((diagnostic) => diagnostic.normalizedObjectIds.filter((id) => id !== room.roomRegionId && nodes[id])).filter((id, position, all) => all.indexOf(id) === position) : rule.ruleId === "G3-001" && rule.status === "unable_to_determine" ? [] : room.boundaryWallIds, zoneNames = (roomAnalysis?.roomToZoneIds[room.roomRegionId] ?? []).map((id) => nodes[id]?.name?.trim()).filter((value): value is string => Boolean(value)), roomName = zoneNames.join(" / ") || `${rule.ruleId === "G3-001" ? "跨层待核验空间" : rule.ruleId === "G3-005" ? "无入口空间" : navigationRule ? rule.status === "unable_to_determine" ? "待核验空间" : "通行受阻空间" : "异常空间"} ${index + 1}`; return { primaryId: room.roomRegionId, relatedIds, label: `${roomName} · ${humanLevelName(room.levelId, nodes)}`, levelId: room.levelId, levelName: humanLevelName(room.levelId, nodes), status: rule.status }; }) : [];
   return [...nodeTargets, ...roomTargets];
 }
 
@@ -175,6 +179,22 @@ export function designerRulePresentation(rule: RuleResult, nodes: Record<string,
     };
     const current = copy[rule.ruleId]!;
     return { title: rule.status === "issue" ? current.issue : rule.status === "unable_to_determine" ? current.unable : rule.ruleName, description: rule.summary, rationale: current.rationale, recommendation: rule.status === "pass" || rule.status === "not_applicable" ? "无需处理。" : current.recommendation, supplemental: rule.status === "unable_to_determine" ? "黄色标注表示数据不足，不代表已经发现设计错误。" : undefined, problemCountLabel: rule.status === "issue" || rule.status === "unable_to_determine" ? String(count || Number(measurement(rule, "missingKitchenCoreCount") ?? 0)) : "0", targets };
+  }
+  if (finalOperationRule(rule.ruleId)) {
+    const copy: Record<string, { issue: string; unable: string; rationale: string; recommendation: string }> = {
+      "G3-009": { issue: "进入房间后没有可停留的位置", unable: "部分门后的停留空间待核验", rationale: "穿过门后需要有一个可以站住并继续进入房间的位置；同一通行阻断不会重复报警。", recommendation: "查看门内侧红色落点，移动附近固定对象或大型家具。" },
+      "G3-010": { issue: "固定柜前被完全挡住", unable: "固定柜门开启情况待核验", rationale: "当前可以检查柜前600毫米操作位置；没有门片数量、宽度、铰链和开向时，不能判断柜门实际如何打开。", recommendation: "逐个查看黄色柜体；如需自动判断开启，资产需提供独立柜门几何。" },
+      "G3-011": { issue: "主要抽屉无法拉出", unable: "主要抽屉的拉出情况待核验", rationale: "资产标签可以提示对象含抽屉，但没有抽拉方向和拉出深度时不能生成真实抽屉区域。", recommendation: "逐个查看黄色对象，并人工核对抽屉方向和深度。" },
+      "G3-012": { issue: "主要设备门无法打开", unable: "主要设备门开启情况待核验", rationale: "洗衣机等设备只有整体尺寸，没有独立门体尺寸、铰链、开向和角度，不能拿设备外框冒充门。", recommendation: "逐个查看黄色设备，人工核对门体；厨房设备门请同时查看G3-029。" },
+      "G3-013": { issue: "日常操作窗前无法站立", unable: "可开启窗是否需要日常操作待确认", rationale: "系统知道哪些窗能开、属于哪个房间，也能画出窗前操作区；但JSON没有说明它是否属于需要人员日常接近的窗。", recommendation: "逐扇查看黄色可开启窗，人工确认用途；固定采光窗已排除。" },
+      "G3-039": { issue: "洗衣设备前没有装取衣物空间", unable: "洗衣设备与洗衣区域的关系待核验", rationale: "洗衣设备需要匹配到可靠洗衣区域，并从入口到达其前方600毫米操作位置。", recommendation: "核对洗衣机所属楼层、位置和LAUNDRY Zone范围。" },
+      "G3-040": { issue: "洗衣设备阻断必要通道", unable: "洗衣设备的通道关系待核验", rationale: "只有设备切断入口或必要路径才算问题；基础通行规则已报告的同一根因不会再生成卡片。", recommendation: "核对设备Room归属和必要路径。" },
+      "G3-041": { issue: "储藏空间无法正常进入", unable: "储藏空间入口待核验", rationale: "储藏室、食品储藏室和步入式衣帽间需要有入口，并能从门口进入内部自由空间。", recommendation: "检查入口Door Portal及门后的柜体布置。" },
+      "G3-042": { issue: "储物柜前被完全挡住", unable: "储物柜取物条件待核验", rationale: "系统可以检查柜前600毫米取物位置；缺少柜门几何时只保留接近检查，不猜测门片。", recommendation: "逐个查看黄色储物柜，移动柜前大型家具，柜门开启另行人工核对。" },
+      "G3-043": { issue: "家务设备形成完全功能冲突", unable: "家务设备关系待核验", rationale: "操作区允许部分重叠并顺序使用；只有一个设备完全占掉另一个设备唯一位置才判问题。", recommendation: "调整相互锁死的设备或家政柜位置。" },
+    };
+    const current = copy[rule.ruleId]!;
+    return { title: rule.status === "issue" ? current.issue : rule.status === "unable_to_determine" ? current.unable : rule.ruleName, description: rule.summary, rationale: current.rationale, recommendation: rule.status === "pass" || rule.status === "not_applicable" ? "无需处理。" : current.recommendation, supplemental: rule.status === "unable_to_determine" ? "黄色标注是可逐项定位的待核验对象，不代表已经发现设计错误。" : undefined, problemCountLabel: rule.status === "issue" || rule.status === "unable_to_determine" ? String(count || rule.diagnostics.filter((diagnostic) => diagnostic.severity !== "info").length) : "0", targets };
   }
   return {
     title: rule.ruleName,

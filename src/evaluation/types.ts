@@ -59,9 +59,24 @@ export type EvaluationReport = {
   scope: "G1-foundation" | "G1-G3-foundation";
   overallStatus: RuleStatus;
   counts: Record<RuleStatus, number>;
+  g3Summary?: G3EvaluationSummary;
   tolerances: GeometryTolerances;
   rules: RuleResult[];
   diagnostics: Diagnostic[];
+};
+
+export type G3EvaluationSummary = {
+  overallStatus: RuleStatus;
+  counts: Record<RuleStatus, number>;
+  severityCounts: { severe: number; major: number; general: number };
+  involvedRoomCount: number;
+  involvedObjectCount: number;
+  sections: {
+    sameFloorUsability: Record<RuleStatus, number>;
+    crossFloorUsability: Record<RuleStatus, number>;
+    specialistChecks: Record<RuleStatus, number>;
+    dataGaps: number;
+  };
 };
 
 export type GeometryTolerances = {
@@ -96,6 +111,10 @@ export type GeometryTolerances = {
   fixtureStandingDepthMeters: number;
   bathEntryDepthMeters: number;
   kitchenCounterRelationMeters: number;
+  cabinetOperationDepthMeters: number;
+  drawerOperationDepthMeters: number;
+  applianceOperationDepthMeters: number;
+  windowOperationDepthMeters: number;
   physicalCollisionAreaSquareMeters: number;
   physicalCollisionVerticalMeters: number;
   stairLandingSampleClearanceMeters: number;
