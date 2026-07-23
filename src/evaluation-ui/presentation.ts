@@ -44,12 +44,13 @@ export function evaluationFocusTargets(rule: RuleResult, nodes: Record<string, N
         : rule.ruleId === "G1-023" ? candidates.filter((node) => node.type === "item")
           : ["G3-002", "G3-007", "G3-008"].includes(rule.ruleId) ? candidates.filter((node) => node.type === "door")
           : rule.ruleId === "G3-037" ? candidates.filter((node) => node.type === "door")
+          : rule.ruleId === "G3-025" ? candidates.filter((node) => node.type === "zone")
           : fixtureItemRule(rule.ruleId) ? candidates.filter((node) => node.type === "item")
           : furnitureSpecialistRule(rule.ruleId) ? candidates.filter((node) => node.type === "item")
           : ["G1-007", "G1-009", "G1-019"].includes(rule.ruleId) ? candidates.filter((node) => node.type === "zone") : [];
   const nodeTargets = primary.map((node, index) => {
     const levelId = resolveAncestorLevelId(node.id, nodes).levelId ?? null, levelName = humanLevelName(levelId ?? undefined, nodes);
-    const typeLabel = rule.ruleId === "G1-004" ? `无效墙体 ${index + 1}` : rule.ruleId === "G1-023" ? `${node.name || "家具或设备"} ${index + 1}` : ["G1-007", "G1-009", "G1-019"].includes(rule.ruleId) ? `${node.name || "功能区"} ${index + 1}` : node.type === "item" ? `${node.name || "家具或设备"} ${index + 1}` : node.type === "stair" ? "楼梯" : node.type === "window" ? "窗户" : "门";
+    const typeLabel = rule.ruleId === "G1-004" ? `无效墙体 ${index + 1}` : rule.ruleId === "G1-023" ? `${node.name || "家具或设备"} ${index + 1}` : node.type === "zone" ? `${node.name || "功能区"} ${index + 1}` : node.type === "item" ? `${node.name || "家具或设备"} ${index + 1}` : node.type === "stair" ? "楼梯" : node.type === "window" ? "窗户" : "门";
     const hostId = rule.ruleId === "G1-013" ? node.wallId ?? node.parentId : null;
     const relatedIds = rule.ruleId.startsWith("G3-") || rule.ruleId === "G1-023" ? rule.diagnostics.filter((diagnostic) => diagnostic.normalizedObjectIds[0] === node.id).flatMap((diagnostic) => diagnostic.normalizedObjectIds.filter((id) => id !== node.id && nodes[id])).filter((id, index, all) => all.indexOf(id) === index) : hostId && nodes[hostId] ? [hostId] : [];
     return { primaryId: node.id, relatedIds, label: `${typeLabel} · ${levelName}`, levelId, levelName, status: rule.status };

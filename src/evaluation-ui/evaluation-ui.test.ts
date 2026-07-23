@@ -141,7 +141,8 @@ describe("Bellevue Room Region UI adapter", () => {
     const operationRelation = designerRulePresentation(rule("G3-025"), nodes, analysis);
     expect(operationRelation.title).toBe("厨房基本操作关系暂时无法完整核验");
     expect(operationRelation.targets).toHaveLength(2);
-    expect(operationRelation.targets.every((target) => target.primaryId.includes("-room-"))).toBe(true);
+    expect(operationRelation.targets.map((target) => nodes[target.primaryId]?.name)).toEqual(expect.arrayContaining(["OPEN KITCHEN", "CHINESE KITCHEN"]));
+    expect(operationRelation.targets.every((target) => nodes[target.primaryId]?.type === "zone" && target.relatedIds.some((id) => nodes[id]?.type === "item"))).toBe(true);
 
     const stove = designerRulePresentation(rule("G3-026"), nodes, analysis);
     expect(stove.title).toBe("厨房核心设备前没有可用站立位置");
