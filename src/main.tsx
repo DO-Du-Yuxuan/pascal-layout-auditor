@@ -124,7 +124,7 @@ function App() {
   const input = useRef<HTMLInputElement>(null), nextMeasurementId = useRef(1), evaluationRuleElements = useRef<Record<string, HTMLElement | null>>({});
   const nodes = data?.nodes || {};
   const levels = Object.values(nodes).filter((n) => n.type === "level");
-  useEffect(() => { const closeTransientUi = (event: KeyboardEvent) => { if (event.key !== "Escape") return; setMeasurementMode("off"); setEvaluationHighlights([]); setActiveEvaluationHighlight(null); setEvaluationFocusMessage(null); }; window.addEventListener("keydown", closeTransientUi); return () => window.removeEventListener("keydown", closeTransientUi); }, []);
+  useEffect(() => { const closeTransientUi = (event: KeyboardEvent) => { if (event.key !== "Escape") return; setMeasurementMode("off"); if (activeEvaluationHighlight) { setActiveEvaluationHighlight(null); setEvaluationFocusMessage(null); return; } setEvaluationHighlights([]); setEvaluationFocusMessage(null); }; window.addEventListener("keydown", closeTransientUi); return () => window.removeEventListener("keydown", closeTransientUi); }, [activeEvaluationHighlight]);
   useEffect(() => subscribeFloorplanImageCrop(() => setImageCropRevision((revision) => revision + 1)), []);
   const load = (text: string, name: string) => {
     try {
@@ -422,6 +422,7 @@ function App() {
                 selectedManualId={selectedManualId}
                 onSelect={selectCanvasObject}
                 onClearEvaluationHighlight={() => { setEvaluationHighlights([]); setActiveEvaluationHighlight(null); setEvaluationFocusMessage(null); }}
+                onRestoreEvaluationOverview={() => { if (activeEvaluationHighlight) { setActiveEvaluationHighlight(null); setEvaluationFocusMessage(null); } }}
                 onActivateEvaluationHighlight={activateEvaluationHighlight}
                 onSelectDimension={(dimension) => { setSelectedId(null); setSelectedDimension(dimension); setSelectedManualId(null); }}
                 onCreateMeasurement={(measurement) => { const created = { ...measurement, id: `measure-${nextMeasurementId.current++}`, createdAt: Date.now() }; setManualMeasurements((current) => [...current, created]); setSelectedId(null); setSelectedDimension(null); setSelectedManualId(created.id); }}
@@ -464,6 +465,7 @@ function CanvasPanel({
   showOperationUseZones,
   onSelect,
   onClearEvaluationHighlight,
+  onRestoreEvaluationOverview,
   onActivateEvaluationHighlight,
   onSelectDimension,
   measurementMode,
@@ -502,6 +504,7 @@ function CanvasPanel({
   showOperationUseZones: boolean;
   onSelect: (id: string | null) => void;
   onClearEvaluationHighlight: () => void;
+  onRestoreEvaluationOverview: () => void;
   onActivateEvaluationHighlight: (highlight: EvaluationHighlight) => void;
   onSelectDimension: (dimension: DimensionSegment) => void;
   measurementMode: MeasurementMode;
@@ -600,6 +603,7 @@ function CanvasPanel({
         showOperationUseZones={showOperationUseZones}
         onSelect={onSelect}
         onClearEvaluationHighlight={onClearEvaluationHighlight}
+        onRestoreEvaluationOverview={onRestoreEvaluationOverview}
         onActivateEvaluationHighlight={onActivateEvaluationHighlight}
         onSelectDimension={onSelectDimension}
         measurementMode={measurementMode}
@@ -691,6 +695,7 @@ function Plan({
   showOperationUseZones,
   onSelect,
   onClearEvaluationHighlight,
+  onRestoreEvaluationOverview,
   onActivateEvaluationHighlight,
   onSelectDimension,
   measurementMode,
@@ -728,6 +733,7 @@ function Plan({
   showOperationUseZones: boolean;
   onSelect: (id: string | null) => void;
   onClearEvaluationHighlight: () => void;
+  onRestoreEvaluationOverview: () => void;
   onActivateEvaluationHighlight: (highlight: EvaluationHighlight) => void;
   onSelectDimension: (dimension: DimensionSegment) => void;
   measurementMode: MeasurementMode;
@@ -755,7 +761,8 @@ function Plan({
     cx = viewBox.minX + viewBox.width / 2,
     cz = viewBox.minZ + viewBox.height / 2,
     vb = `${viewBox.minX} ${viewBox.minZ} ${viewBox.width} ${viewBox.height}`;
-  const highlightsOnLevel = evaluationHighlights.filter((highlight) => (resolveAncestorLevelId(highlight.primaryId, nodes).levelId ?? roomAnalysis?.rooms.find((room) => room.roomRegionId === highlight.primaryId)?.levelId) === levelId);
+  const visibleEvaluationHighlights = activeEvaluationHighlight ? evaluationHighlights.filter((highlight) => highlight.ruleId === activeEvaluationHighlight.ruleId && highlight.targetIndex === activeEvaluationHighlight.targetIndex) : evaluationHighlights;
+  const highlightsOnLevel = visibleEvaluationHighlights.filter((highlight) => (resolveAncestorLevelId(highlight.primaryId, nodes).levelId ?? roomAnalysis?.rooms.find((room) => room.roomRegionId === highlight.primaryId)?.levelId) === levelId);
   const snapSegments = useMemo(() => buildMeasurementSnapSegments(nodes, levelId), [nodes, levelId]);
   const activeMeasurementMode = resolveMeasurementMode(measurementStart?.point ?? null, measurementHover?.point ?? null, orthogonalLock);
   useEffect(() => { setMeasurementStart(null); setMeasurementHover(null); setOrthogonalLock(false); }, [measurementMode, levelId]);
@@ -848,7 +855,7 @@ function Plan({
           event.preventDefault(); event.stopPropagation();
           const snap = snapAtEvent(event); if (snap) commitMeasurementPoint(snap);
         }}
-        onClick={(event) => { if (!(event.target as Element).closest("[data-selectable]")) { onSelect(null); onSelectManual(null); } }}>
+        onClick={(event) => { if (!(event.target as Element).closest("[data-selectable]")) { onSelect(null); onSelectManual(null); onRestoreEvaluationOverview(); } }}>
         <defs>
           <marker
             id={`arrow-${levelId}`}
@@ -936,7 +943,7 @@ function Plan({
       </svg>
       {measurementMode !== "off" && <div className="measure-hint">{measurementStart ? `${orthogonalLock ? activeMeasurementMode === "horizontal" ? "水平正交已开启" : "垂直正交已开启" : "自由对齐"} · 点击第二点 · Shift 切换正交 · Esc 退出` : `${orthogonalLock ? "正交已开启" : "正交已关闭"} · 点击第一点 · Shift 切换正交 · Esc 退出`}</div>}
       <Compass rotation={rotation} />
-      {highlightsOnLevel.length > 0 && <div className="evaluation-highlight-legend"><span><i className="primary" />确定问题</span>{highlightsOnLevel.some((highlight) => highlight.status === "unable_to_determine") && <span><i className="unresolved" />待核验对象</span>}<span><i className="related" />关联对象</span><span><i className="muted" />其他对象</span><button onClick={onClearEvaluationHighlight}>关闭高亮</button></div>}
+      {highlightsOnLevel.length > 0 && <div className="evaluation-highlight-legend"><span><i className="primary" />确定问题</span>{highlightsOnLevel.some((highlight) => highlight.status === "unable_to_determine") && <span><i className="unresolved" />待核验对象</span>}<span><i className="related" />关联对象</span><span><i className="muted" />其他对象</span>{activeEvaluationHighlight && <button onClick={onRestoreEvaluationOverview}>返回全部问题</button>}<button onClick={onClearEvaluationHighlight}>关闭高亮</button></div>}
       {showRoomRegions && <div className="room-region-legend"><span><i className="room" />Room Region（物理空间）</span><span><i className="zone" />Zone（功能区域）</span><span><i className="warning" />未匹配/部分匹配</span></div>}
       {showConnectivity && connectivityGraph && <div className="connectivity-legend"><span><i className="reachable" />可达节点</span><span><i className="unreachable" />不可达/无入口</span><span><i className="portal" />有效门连接</span><span><i className="unresolved" />未解析门或楼梯</span></div>}
       {showDoorOperationDebug && <div className="door-operation-legend"><span><i className="swing" />门扇扫掠</span><span><i className="entry" />入口检测区域</span></div>}
